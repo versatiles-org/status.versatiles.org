@@ -13,7 +13,7 @@ All checks are in [`gatus/config.yaml`](gatus/config.yaml), run by [Gatus](https
 - **Download:** the download page, the planet file and the CDN behind it.
 - **Geocoding:** a search on geocode.versatiles.org.
 - **Websites:** versatiles.org and docs.versatiles.org.
-- **DNS:** the A records of the servers and the expiry of the domains.
+- **DNS:** the A records of the servers, the CNAMEs of download and docs, the name servers and the expiry of the domains.
 
 Besides the status code and response time, the checks look at the content (a tile of the expected size, a style with its layers, a search that finds Berlin) and at TLS certificates that are less than 14 days from expiry.
 

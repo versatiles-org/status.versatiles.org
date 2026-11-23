@@ -9,20 +9,60 @@
 # ${...} values come from .env through compose.yaml. A literal `$` must be
 # written as `$$`.
 
+# The start page. Gatus has no layout options: only these texts, links and
+# buttons, and custom CSS.
 ui:
   title: VersaTiles Status
-  description: Current state and uptime of the VersaTiles services.
+  description: Current state and uptime of the public VersaTiles services.
   header: VersaTiles Status
   dashboard-heading: VersaTiles services
-  dashboard-subheading: Each service is checked every minute.
+  dashboard-subheading: Live checks of map tiles, downloads, geocoding, the websites and DNS. Most run every minute. Click a check for its history.
   logo: https://versatiles.org/assets/logo/versatiles.svg
   link: https://versatiles.org
+  favicon:
+    default: https://versatiles.org/assets/logo/favicon.ico
+    size32x32: https://versatiles.org/assets/logo/versatiles.32.png
   default-sort-by: group
   buttons:
+    - name: Map
+      link: https://tiles.versatiles.org/
+    - name: Download
+      link: https://download.versatiles.org/
+    - name: Docs
+      link: https://docs.versatiles.org/
     - name: versatiles.org
-      link: https://versatiles.org
+      link: https://versatiles.org/
     - name: GitHub
       link: https://github.com/versatiles-org
+  # The colours of versatiles.org for the dark theme, which Gatus shows by
+  # default: its background and text, and the purple of the logo as accent.
+  # Only Gatus' theme variables (HSL values, as in its own app.css) are
+  # changed, not its markup, so this should survive Gatus updates. Gatus sets
+  # them on `:root.dark`, and custom.css loads before app.css, so the selector
+  # here must be more specific: `html:root.dark`. The light theme stays Gatus'
+  # own.
+  #
+  # The last rule hides "System Monitoring Dashboard" under the header, which
+  # Gatus hardcodes. If a Gatus update changes the markup, it simply shows again.
+  custom-css: |
+    html:root.dark {
+      --background: 240 7% 11%;
+      --card: 240 7% 14%;
+      --popover: 240 7% 14%;
+      --foreground: 0 0% 80%;
+      --card-foreground: 0 0% 80%;
+      --popover-foreground: 0 0% 80%;
+      --muted: 240 6% 20%;
+      --muted-foreground: 0 0% 60%;
+      --secondary: 240 6% 20%;
+      --accent: 240 6% 20%;
+      --border: 240 6% 22%;
+      --input: 240 6% 22%;
+      --ring: 271 100% 60%;
+    }
+    header h1.text-2xl + p.text-muted-foreground {
+      display: none;
+    }
 
 storage:
   type: sqlite
@@ -197,6 +237,57 @@ endpoints:
     conditions:
       - "[DNS_RCODE] == NOERROR"
       - "[BODY] == 138.199.238.207"
+    alerts: *alerts
+
+  # download.versatiles.org crosses two DNS providers: the CNAME is in the
+  # versatiles.org zone at checkdomain, its target at Cloudflare.
+  - name: download.versatiles.org CNAME
+    group: DNS
+    url: 1.1.1.1
+    dns:
+      query-name: download.versatiles.org
+      query-type: CNAME
+    interval: 5m
+    conditions:
+      - "[DNS_RCODE] == NOERROR"
+      - "[BODY] == download.versatiles.cloud."
+    alerts: *alerts
+
+  - name: docs.versatiles.org CNAME
+    group: DNS
+    url: 1.1.1.1
+    dns:
+      query-name: docs.versatiles.org
+      query-type: CNAME
+    interval: 5m
+    conditions:
+      - "[DNS_RCODE] == NOERROR"
+      - "[BODY] == versatiles-org.github.io."
+    alerts: *alerts
+
+  # Gatus returns one of the name servers, not always the same, hence patterns.
+  - name: versatiles.org name servers
+    group: DNS
+    url: 1.1.1.1
+    dns:
+      query-name: versatiles.org
+      query-type: NS
+    interval: 5m
+    conditions:
+      - "[DNS_RCODE] == NOERROR"
+      - "[BODY] == pat(*.checkdomain.de.)"
+    alerts: *alerts
+
+  - name: versatiles.cloud name servers
+    group: DNS
+    url: 1.1.1.1
+    dns:
+      query-name: versatiles.cloud
+      query-type: NS
+    interval: 5m
+    conditions:
+      - "[DNS_RCODE] == NOERROR"
+      - "[BODY] == pat(*.ns.cloudflare.com.)"
     alerts: *alerts
 
   - name: versatiles.org domain
