@@ -79,6 +79,17 @@ else
 	fail "the login page doesn't answer. See: docker compose logs login"
 fi
 
+# The dashboard, if one is configured. It's regenerated every 15 minutes.
+if [ -n "${DASHBOARD_REPO:-}" ]; then
+	if [ ! -f ./volumes/dashboard/index.html ]; then
+		echo "  note: the dashboard hasn't been generated yet. See bin/dashboard/setup.sh."
+	elif [ -n "$(find ./volumes/dashboard/index.html -mmin +60)" ]; then
+		fail "the dashboard is more than an hour old. See /var/log/status-dashboard.log"
+	else
+		echo "  ok: the dashboard is up to date."
+	fi
+fi
+
 if [ "$failed" -ne 0 ]; then
 	echo "Verification failed."
 	exit 1

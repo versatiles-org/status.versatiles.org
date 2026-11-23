@@ -32,7 +32,7 @@ HEAD_BEFORE=${HEAD_BEFORE_UPDATE:-$HEAD_BEFORE}
 # Before `up`, so newly generated secrets reach the containers.
 ensure_secrets
 
-mkdir -p ./volumes/login
+mkdir -p ./volumes/login ./volumes/dashboard
 
 # Recreates only the containers whose image or definition changed.
 docker compose pull --quiet
@@ -60,5 +60,9 @@ fi
 # verify.sh expects every check from the config.
 ./bin/push/setup_cron.sh
 ./bin/push/checks.sh
+# The dashboard is optional (DASHBOARD_REPO in .env) and needs its deploy key
+# on GitHub first, so a failure here only warns.
+./bin/dashboard/setup.sh
+./bin/dashboard/update.sh || echo "Warning: the dashboard could not be generated. Is the deploy key added to the repo?"
 ./bin/verify.sh
 echo "Update completed."

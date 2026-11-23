@@ -82,6 +82,8 @@ services:
       - ./volumes/nginx-cert/:/etc/nginx/ssl/:ro
       # The pages of the private area, served behind the login.
       - ./private/:/var/www/private/:ro
+      # The generated dashboard, see bin/dashboard/update.sh.
+      - ./volumes/dashboard/:/var/www/dashboard/:ro
     security_opt:
       - no-new-privileges:true
     healthcheck:

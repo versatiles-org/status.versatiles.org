@@ -28,6 +28,7 @@ An alert is sent after three failed checks in a row, and again when the check ha
 - **nginx:** TLS in front of Gatus, and the certbot challenge.
 - **certbot:** Let's Encrypt certificate, renewed weekly by cron.
 - **login:** the login for the private area at `/private/`, a small Node service without dependencies ([`login/`](login/)). nginx asks it about every request there (`auth_request`). Passwords are stored as scrypt hashes in `volumes/login/users`, sessions are signed cookies that last 7 days. Removing a user or changing their password ends their sessions at once. Logins are limited to 10 per minute per address.
+- **bin/dashboard/update.sh:** optional. Every 15 minutes by cron, it pulls the private repo named by `DASHBOARD_REPO` in `.env` with a read-only deploy key, runs that repo's `npm run dashboard -- --out <dir>` in the Node image, and nginx serves the result at `/private/dashboard/` behind the login. `bin/dashboard/setup.sh` creates the deploy key and prints it for the repo's settings.
 - **bin/push/checks.sh:** the checks Gatus can't run, every 10 minutes by cron on the host. It reports with `GATUS_PUSH_TOKEN`, which `bin/setup.sh` and `bin/update.sh` generate into `.env`.
 
 The configuration of both Gatus and nginx reaches the containers through directory mounts, so `bin/update.sh` applies it without recreating them.
