@@ -20,14 +20,15 @@ fi
 
 SRC=./volumes/dashboard-src
 OUT=./volumes/dashboard
-KEY=./volumes/dashboard-key/id_ed25519
+# Absolute: git runs ssh inside the clone (git -C), where a relative path fails.
+KEY="$PWD/volumes/dashboard-key/id_ed25519"
 IMAGE=$(sed -n 's/^ *image: *\(node:[^ ]*\).*/\1/p' compose.yaml)
 
 if [ ! -f "$KEY" ]; then
 	echo "Error: no deploy key. Run bin/dashboard/setup.sh first." >&2
 	exit 1
 fi
-export GIT_SSH_COMMAND="ssh -i $KEY -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new"
+export GIT_SSH_COMMAND="ssh -i '$KEY' -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new"
 
 # One run at a time. A second one waits instead of giving up: a push may come
 # in after the running one has pulled. Checked first, so a missing flock fails
