@@ -1,0 +1,30 @@
+name: CI
+
+# Catches a broken Gatus config before the server pulls it: Gatus would keep the
+# old config, and bin/update.sh would stop at its verification.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: Check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Lint shell scripts
+        run: shellcheck -x bin/*.sh bin/cert/*.sh tests/*.sh
+
+      - name: Validate compose.yaml
+        run: docker compose config --quiet
+
+      - name: Start Gatus with the config
+        run: tests/config.sh

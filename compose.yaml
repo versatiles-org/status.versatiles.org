@@ -1,0 +1,75 @@
+# Size limit for what the containers write to stdout/stderr (`docker compose
+# logs`). Docker's default keeps these files forever.
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: 10m
+    max-file: "3"
+
+services:
+  gatus:
+    container_name: gatus
+    logging: *logging
+    # Pinned: a new Gatus version can change the config format. Update it here,
+    # run tests/config.sh, then bin/update.sh on the server.
+    image: twinproduction/gatus:v5.38.0
+    restart: always
+    networks: [docker_network]
+    expose: [8080]
+    # No healthcheck: the image has no shell or wget to run one. bin/verify.sh
+    # checks Gatus through nginx instead.
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      - GATUS_CONFIG_PATH=/config/config.yaml
+      - PUSHOVER_APPLICATION_TOKEN=${PUSHOVER_APPLICATION_TOKEN:-}
+      - PUSHOVER_USER_KEY=${PUSHOVER_USER_KEY:-}
+    volumes:
+      # A directory mount, so Gatus sees the new file after `git pull` replaces
+      # it and reloads on its own. A single-file mount would keep the old one.
+      - ./gatus/:/config/:ro
+      # Uptime history (SQLite).
+      - ./volumes/gatus-data/:/data/:rw
+
+  nginx:
+    container_name: nginx
+    logging: *logging
+    # nginx.conf's worker_shutdown_timeout (1s) lets nginx exit within about 2s.
+    stop_grace_period: 3s
+    image: nginx:1.31-alpine
+    restart: always
+    depends_on: [gatus]
+    networks: [docker_network]
+    ports: [80:80, 443:443]
+    volumes:
+      # nginx.conf reaches the container through the directory mount below, not
+      # as a single file: a single-file mount keeps showing the old content
+      # after `git pull` replaces the file. See nginx/nginx.stub.conf.
+      - ./nginx/nginx.stub.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/:/etc/nginx/repo/:ro
+      - ./volumes/certbot-www/:/var/www/certbot/:ro
+      - ./volumes/nginx-cert/:/etc/nginx/ssl/:ro
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      # Answered by nginx itself, see /healthz in nginx/nginx.conf.
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1/healthz"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  certbot:
+    container_name: certbot
+    image: certbot/certbot:v5.9.0
+    # Only run by the scripts in bin/cert, which check that nginx is up.
+    profiles: [donotstart]
+    security_opt:
+      - no-new-privileges:true
+    volumes:
+      - ./volumes/certbot-cert/:/etc/letsencrypt/:rw
+      - ./volumes/certbot-www/:/var/www/certbot/:rw
+
+networks:
+  docker_network:
+    driver: bridge

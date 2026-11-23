@@ -1,0 +1,212 @@
+# Gatus configuration for status.versatiles.org.
+#
+# The reference is the Gatus README for the pinned version (see compose.yaml):
+# https://github.com/TwiN/gatus/blob/v5.38.0/README.md
+#
+# Gatus watches this file and reloads it when `git pull` changes it, so a
+# change here needs no restart. tests/config.sh checks that Gatus accepts it.
+#
+# ${...} values come from .env through compose.yaml. A literal `$` must be
+# written as `$$`.
+
+ui:
+  title: VersaTiles Status
+  description: Current state and uptime of the VersaTiles services.
+  header: VersaTiles Status
+  dashboard-heading: VersaTiles services
+  dashboard-subheading: Each service is checked every minute.
+  logo: https://versatiles.org/assets/logo/versatiles.svg
+  link: https://versatiles.org
+  default-sort-by: group
+  buttons:
+    - name: versatiles.org
+      link: https://versatiles.org
+    - name: GitHub
+      link: https://github.com/versatiles-org
+
+storage:
+  type: sqlite
+  path: /data/data.db
+  caching: true
+
+# If a pulled config is invalid, keep running the old one instead of exiting.
+# CI runs tests/config.sh on every push, and bin/update.sh restarts Gatus after
+# a config change and checks that it loaded every endpoint.
+skip-invalid-config-update: true
+
+# Alerts go to the maintainer's phone through Pushover. They are for outages
+# only: failing CI or security alerts don't belong here.
+#
+# Three failed checks in a row (about three minutes) before an alert, so a
+# deploy or a single lost request doesn't wake anyone. Planned work at fixed
+# times goes in `maintenance-windows` on the endpoints it affects.
+#
+# Without the two keys in .env, Gatus ignores the alerts and only shows the
+# page, which is what tests/config.sh and local runs rely on.
+alerting:
+  pushover:
+    application-token: ${PUSHOVER_APPLICATION_TOKEN}
+    user-key: ${PUSHOVER_USER_KEY}
+    resolved-priority: -1
+    default-alert:
+      failure-threshold: 3
+      success-threshold: 2
+      send-on-resolved: true
+
+endpoints:
+  # tiles.versatiles.org
+
+  - name: Map frontend
+    group: Tiles
+    url: https://tiles.versatiles.org/
+    conditions:
+      - "[STATUS] == 200"
+      - "[BODY] == pat(*<title>VersaTiles*)"
+      - "[RESPONSE_TIME] < 3000"
+      # certbot renews 30 days before expiry, so 14 days left means renewal is broken.
+      - "[CERTIFICATE_EXPIRATION] > 336h"
+    alerts: &alerts
+      - type: pushover
+
+  - name: Vector tile
+    group: Tiles
+    url: https://tiles.versatiles.org/tiles/osm/5/17/10
+    conditions:
+      - "[STATUS] == 200"
+      # A real tile of central Europe is about 120 kB. An empty or error body is not.
+      - "len([BODY]) > 10000"
+      - "[RESPONSE_TIME] < 3000"
+    alerts: *alerts
+
+  - name: Tile metadata
+    group: Tiles
+    url: https://tiles.versatiles.org/tiles/osm/meta.json
+    conditions:
+      - "[STATUS] == 200"
+      - "[BODY].name == VersaTiles OSM"
+      - "[BODY].maxzoom == 14"
+    alerts: *alerts
+
+  - name: Map style
+    group: Tiles
+    url: https://tiles.versatiles.org/assets/styles/colorful/style.json
+    conditions:
+      - "[STATUS] == 200"
+      - "[BODY].version == 8"
+      - "len([BODY].layers) > 100"
+    alerts: *alerts
+
+  - name: Deployed versions
+    group: Tiles
+    url: https://tiles.versatiles.org/version.json
+    conditions:
+      - "[STATUS] == 200"
+      - "has([BODY].versatiles) == true"
+    alerts: *alerts
+
+  # download.versatiles.org and the CDN behind it
+
+  - name: Download page
+    group: Download
+    url: https://download.versatiles.org/
+    conditions:
+      - "[STATUS] == 200"
+      - "[BODY] == pat(*osm-vector.versatiles*)"
+      - "[RESPONSE_TIME] < 3000"
+      - "[CERTIFICATE_EXPIRATION] > 336h"
+    alerts: *alerts
+
+  # HEAD only: the file is about 66 GB.
+  - name: Planet file
+    group: Download
+    url: https://download.versatiles.org/osm-vector/osm-vector.versatiles
+    method: HEAD
+    interval: 10m
+    conditions:
+      - "[STATUS] == 200"
+    alerts: *alerts
+
+  - name: CDN
+    group: Download
+    url: https://cdn.versatiles.cloud/osm-vector/osm-vector.versatiles
+    method: HEAD
+    interval: 10m
+    conditions:
+      - "[STATUS] == 200"
+      - "[CERTIFICATE_EXPIRATION] > 336h"
+    alerts: *alerts
+
+  # geocode.versatiles.org
+
+  - name: Geocoding
+    group: Geocoding
+    url: https://geocode.versatiles.org/api?q=berlin&limit=1
+    conditions:
+      - "[STATUS] == 200"
+      - "[BODY].features[0].properties.name == Berlin"
+      - "[RESPONSE_TIME] < 3000"
+      - "[CERTIFICATE_EXPIRATION] > 336h"
+    alerts: *alerts
+
+  # Websites
+
+  - name: versatiles.org
+    group: Websites
+    url: https://versatiles.org/
+    conditions:
+      - "[STATUS] == 200"
+      - "[BODY] == pat(*<title>VersaTiles*)"
+      - "[CERTIFICATE_EXPIRATION] > 336h"
+    alerts: *alerts
+
+  - name: docs.versatiles.org
+    group: Websites
+    url: https://docs.versatiles.org/
+    conditions:
+      - "[STATUS] == 200"
+      - "[BODY] == pat(*<title>VersaTiles*)"
+      - "[CERTIFICATE_EXPIRATION] > 336h"
+    alerts: *alerts
+
+  # DNS and domains. The A records name the servers on purpose: a changed
+  # record is either a planned move, which updates this file, or a problem.
+
+  - name: tiles.versatiles.org A record
+    group: DNS
+    url: 1.1.1.1
+    dns:
+      query-name: tiles.versatiles.org
+      query-type: A
+    interval: 5m
+    conditions:
+      - "[DNS_RCODE] == NOERROR"
+      - "[BODY] == 194.150.168.103"
+    alerts: *alerts
+
+  - name: geocode.versatiles.org A record
+    group: DNS
+    url: 1.1.1.1
+    dns:
+      query-name: geocode.versatiles.org
+      query-type: A
+    interval: 5m
+    conditions:
+      - "[DNS_RCODE] == NOERROR"
+      - "[BODY] == 138.199.238.207"
+    alerts: *alerts
+
+  - name: versatiles.org domain
+    group: DNS
+    url: https://versatiles.org/
+    interval: 12h
+    conditions:
+      - "[DOMAIN_EXPIRATION] > 720h"
+    alerts: *alerts
+
+  - name: versatiles.cloud domain
+    group: DNS
+    url: https://versatiles.cloud/
+    interval: 12h
+    conditions:
+      - "[DOMAIN_EXPIRATION] > 720h"
+    alerts: *alerts
