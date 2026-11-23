@@ -61,7 +61,7 @@ done
 if [ "$loaded" -eq "$expected" ]; then
 	echo "  ok: Gatus has loaded all $expected endpoints."
 else
-	fail "Gatus has loaded $loaded endpoints, gatus/config.yaml defines $expected. See: docker compose logs gatus"
+	fail "Gatus lists $loaded endpoints, gatus/config.yaml defines $expected. Push checks only show up after their first result (bin/push/checks.sh). See: docker compose logs gatus"
 fi
 
 if [ "$failed" -ne 0 ]; then

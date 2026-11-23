@@ -47,8 +47,9 @@ if ! git diff --quiet "$HEAD_BEFORE" HEAD -- gatus/; then
 	docker compose restart gatus
 fi
 
-# After verify.sh, which waits until Gatus is up, so it accepts the results.
-./bin/verify.sh
+# Before verify.sh: Gatus lists a push check only once it got a result, and
+# verify.sh expects every check from the config.
 ./bin/push/setup_cron.sh
 ./bin/push/checks.sh
+./bin/verify.sh
 echo "Update completed."

@@ -38,7 +38,10 @@ report() {
 		query="success=false&error=$(jq -rn --arg s "$error" '$s | @uri')"
 	fi
 	echo "$key: ${error:-ok}"
-	"${PUSH_CURL[@]}" -X POST -H "Authorization: Bearer ${GATUS_PUSH_TOKEN}" \
+	# Retried for about half a minute: right after bin/update.sh restarted Gatus,
+	# nginx answers 502 until Gatus is up.
+	"${PUSH_CURL[@]}" --retry 10 --retry-delay 3 --retry-all-errors \
+		-X POST -H "Authorization: Bearer ${GATUS_PUSH_TOKEN}" \
 		"${PUSH_URL}/api/v1/endpoints/${key}/external?${query}" >/dev/null
 }
 
