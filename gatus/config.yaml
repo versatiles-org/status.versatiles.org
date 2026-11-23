@@ -41,6 +41,12 @@ skip-invalid-config-update: true
 # deploy or a single lost request doesn't wake anyone. Planned work at fixed
 # times goes in `maintenance-windows` on the endpoints it affects.
 #
+# Gatus doesn't group alerts: every failing check with `alerts` sends its own
+# message, so one server going down would send one per check. Therefore only
+# the checks that matter most for a service alert, the ones users depend on
+# directly, plus checks nothing else would notice (certificates, DNS, domains).
+# The other checks show on the page and stay silent.
+#
 # Without the two keys in .env, Gatus ignores the alerts and only shows the
 # page, which is what tests/config.sh and local runs rely on.
 alerting:
@@ -54,19 +60,7 @@ alerting:
       send-on-resolved: true
 
 endpoints:
-  # tiles.versatiles.org
-
-  - name: Map frontend
-    group: Tiles
-    url: https://tiles.versatiles.org/
-    conditions:
-      - "[STATUS] == 200"
-      - "[BODY] == pat(*<title>VersaTiles*)"
-      - "[RESPONSE_TIME] < 3000"
-      # certbot renews 30 days before expiry, so 14 days left means renewal is broken.
-      - "[CERTIFICATE_EXPIRATION] > 336h"
-    alerts: &alerts
-      - type: pushover
+  # tiles.versatiles.org. Alerts: the tile and the style, which maps load.
 
   - name: Vector tile
     group: Tiles
@@ -76,16 +70,10 @@ endpoints:
       # A real tile of central Europe is about 120 kB. An empty or error body is not.
       - "len([BODY]) > 10000"
       - "[RESPONSE_TIME] < 3000"
-    alerts: *alerts
-
-  - name: Tile metadata
-    group: Tiles
-    url: https://tiles.versatiles.org/tiles/osm/meta.json
-    conditions:
-      - "[STATUS] == 200"
-      - "[BODY].name == VersaTiles OSM"
-      - "[BODY].maxzoom == 14"
-    alerts: *alerts
+      # certbot renews 30 days before expiry, so 14 days left means renewal is broken.
+      - "[CERTIFICATE_EXPIRATION] > 336h"
+    alerts: &alerts
+      - type: pushover
 
   - name: Map style
     group: Tiles
@@ -96,15 +84,32 @@ endpoints:
       - "len([BODY].layers) > 100"
     alerts: *alerts
 
+  - name: Map frontend
+    group: Tiles
+    url: https://tiles.versatiles.org/
+    conditions:
+      - "[STATUS] == 200"
+      - "[BODY] == pat(*<title>VersaTiles*)"
+      - "[RESPONSE_TIME] < 3000"
+
+  - name: Tile metadata
+    group: Tiles
+    url: https://tiles.versatiles.org/tiles/osm/meta.json
+    conditions:
+      - "[STATUS] == 200"
+      - "[BODY].name == VersaTiles OSM"
+      - "[BODY].maxzoom == 14"
+
   - name: Deployed versions
     group: Tiles
     url: https://tiles.versatiles.org/version.json
     conditions:
       - "[STATUS] == 200"
       - "has([BODY].versatiles) == true"
-    alerts: *alerts
 
-  # download.versatiles.org and the CDN behind it
+  # download.versatiles.org and the CDN behind it. Alerts: the page (the
+  # Cloudflare Worker) and the CDN (the bucket). The planet file goes through
+  # both, so it stays silent.
 
   - name: Download page
     group: Download
@@ -124,7 +129,6 @@ endpoints:
     interval: 10m
     conditions:
       - "[STATUS] == 200"
-    alerts: *alerts
 
   - name: CDN
     group: Download

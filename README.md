@@ -17,7 +17,7 @@ All checks are in [`gatus/config.yaml`](gatus/config.yaml), run by [Gatus](https
 
 Besides the status code and response time, the checks look at the content (a tile of the expected size, a style with its layers, a search that finds Berlin) and at TLS certificates that are less than 14 days from expiry.
 
-An alert is sent after three failed checks in a row, and again when the check has passed twice.
+An alert is sent after three failed checks in a row, and again when the check has passed twice. Gatus doesn't group alerts, so only the checks that matter most for each service send them: the vector tile and the style, the download page and the CDN, geocoding, the websites, DNS and domains. The map frontend, the tile metadata, `version.json` and the planet file show on the page only, so a server going down sends two messages, not five.
 
 ## Architecture
 
