@@ -29,6 +29,9 @@ if [ "$HEAD_BEFORE" != "$HEAD_AFTER" ] && [ -z "${UPDATE_REEXECUTED:-}" ]; then
 fi
 HEAD_BEFORE=${HEAD_BEFORE_UPDATE:-$HEAD_BEFORE}
 
+# Before `up`, so a newly generated token reaches Gatus.
+ensure_push_token
+
 # Recreates only the containers whose image or definition changed.
 docker compose pull --quiet
 docker compose up -d
@@ -44,5 +47,8 @@ if ! git diff --quiet "$HEAD_BEFORE" HEAD -- gatus/; then
 	docker compose restart gatus
 fi
 
+# After verify.sh, which waits until Gatus is up, so it accepts the results.
 ./bin/verify.sh
+./bin/push/setup_cron.sh
+./bin/push/checks.sh
 echo "Update completed."

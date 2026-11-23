@@ -75,7 +75,8 @@ storage:
 skip-invalid-config-update: true
 
 # Alerts go to the maintainer's phone through Pushover. They are for outages
-# only: failing CI or security alerts don't belong here.
+# and for things that go stale unnoticed, like an old planet. Failing CI or
+# security alerts don't belong here.
 #
 # Three failed checks in a row (about three minutes) before an alert, so a
 # deploy or a single lost request doesn't wake anyone. Planned work at fixed
@@ -146,6 +147,39 @@ endpoints:
     conditions:
       - "[STATUS] == 200"
       - "has([BODY].versatiles) == true"
+
+  # Satellite imagery comes from two places: zoom 0-16 from the tile server's
+  # local copy, zoom 17 and up from the CDN (see download/sources.json in
+  # tiles.versatiles.org). Each path gets its own alerting check.
+
+  - name: Satellite tile, zoom 5 (local copy)
+    group: Satellite
+    url: https://tiles.versatiles.org/tiles/satellite/5/17/10
+    conditions:
+      - "[STATUS] == 200"
+      # About 60 kB.
+      - "len([BODY]) > 10000"
+      - "[RESPONSE_TIME] < 3000"
+    alerts: *alerts
+
+  - name: Satellite tile, zoom 17 (from the CDN)
+    group: Satellite
+    # Berlin, where orthophotos exist at this zoom.
+    url: https://tiles.versatiles.org/tiles/satellite/17/70420/42986
+    conditions:
+      - "[STATUS] == 200"
+      # About 20 kB.
+      - "len([BODY]) > 5000"
+      - "[RESPONSE_TIME] < 5000"
+    alerts: *alerts
+
+  - name: Satellite metadata
+    group: Satellite
+    url: https://tiles.versatiles.org/tiles/satellite/meta.json
+    conditions:
+      - "[STATUS] == 200"
+      - "[BODY].tile_format == image/webp"
+      - "[BODY].maxzoom == 19"
 
   # download.versatiles.org and the CDN behind it. Alerts: the page (the
   # Cloudflare Worker) and the CDN (the bucket). The planet file goes through
@@ -304,4 +338,47 @@ endpoints:
     interval: 12h
     conditions:
       - "[DOMAIN_EXPIRATION] > 720h"
+    alerts: *alerts
+
+# Checks Gatus can't run itself, because they read response headers or compare
+# dates. bin/push/checks.sh runs them every 10 minutes from cron on this server
+# and reports each result here. The heartbeat marks a check as failed when no
+# result came in for 30 minutes, i.e. when the script stopped running.
+#
+# The script finds an endpoint by its key, `<group>_<name>` in lower case with
+# spaces replaced by `-`. Renaming one here means changing the key there.
+#
+# GATUS_PUSH_TOKEN is generated into .env by bin/setup.sh and bin/update.sh.
+external-endpoints:
+  - name: Vector tile content type
+    group: Tiles
+    token: ${GATUS_PUSH_TOKEN}
+    heartbeat:
+      interval: 30m
+    alerts: *alerts
+
+  # Not an outage, but nobody would notice for months: a planet older than 180
+  # days means the release pipeline has stalled. Releases so far came every
+  # 2 to 5 months.
+  - name: Planet release
+    group: Download
+    token: ${GATUS_PUSH_TOKEN}
+    heartbeat:
+      interval: 30m
+    alerts: *alerts
+
+  # The tile server serves the newest planet, at the latest 7 days after its
+  # release. tiles.versatiles.org only updates when bin/update.sh runs there.
+  - name: Newest planet served
+    group: Tiles
+    token: ${GATUS_PUSH_TOKEN}
+    heartbeat:
+      interval: 30m
+    alerts: *alerts
+
+  - name: Satellite tile content type
+    group: Satellite
+    token: ${GATUS_PUSH_TOKEN}
+    heartbeat:
+      interval: 30m
     alerts: *alerts

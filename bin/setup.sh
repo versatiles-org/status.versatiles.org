@@ -16,6 +16,8 @@ if [ -z "${PUSHOVER_APPLICATION_TOKEN:-}" ] || [ -z "${PUSHOVER_USER_KEY:-}" ]; 
 	echo "Warning: the Pushover keys in .env are empty, so no alerts will be sent."
 fi
 
+ensure_push_token
+
 mkdir -p ./volumes/gatus-data ./volumes/certbot-www ./volumes/certbot-cert ./volumes/nginx-cert
 
 # nginx needs some certificate to start, and must be running for certbot.
@@ -26,6 +28,9 @@ docker compose up -d
 wait_for_healthy nginx
 
 ./bin/cert/create_valid.sh
+# After verify.sh, which waits until Gatus is up, so it accepts the results.
 ./bin/verify.sh
+./bin/push/setup_cron.sh
+./bin/push/checks.sh
 
 echo "Setup completed."

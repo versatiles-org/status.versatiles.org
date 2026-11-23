@@ -14,6 +14,24 @@ load_env() {
 	set +a
 }
 
+# Adds a random GATUS_PUSH_TOKEN to .env if it has none. bin/push/checks.sh
+# uses it to report to Gatus. Run before `docker compose up`, so Gatus gets it.
+ensure_push_token() {
+	if [ -n "${GATUS_PUSH_TOKEN:-}" ]; then
+		return 0
+	fi
+	GATUS_PUSH_TOKEN=$(openssl rand -hex 32)
+	export GATUS_PUSH_TOKEN
+	# Replace an empty entry, or append one.
+	if grep -q '^GATUS_PUSH_TOKEN=' .env; then
+		sed -i.bak "s/^GATUS_PUSH_TOKEN=.*/GATUS_PUSH_TOKEN=${GATUS_PUSH_TOKEN}/" .env
+		rm -f .env.bak
+	else
+		printf '\nGATUS_PUSH_TOKEN=%s\n' "$GATUS_PUSH_TOKEN" >> .env
+	fi
+	echo "Generated GATUS_PUSH_TOKEN in .env."
+}
+
 # True if the compose service is running.
 service_is_running() {
 	docker compose ps --status running --quiet "$1" | grep -q .

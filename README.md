@@ -9,21 +9,25 @@ Checks the health of the VersaTiles services every minute, shows their state and
 
 All checks are in [`gatus/config.yaml`](gatus/config.yaml), run by [Gatus](https://github.com/TwiN/gatus):
 
-- **Tiles:** the map frontend, a vector tile, the tile metadata, a style and `version.json` on tiles.versatiles.org.
-- **Download:** the download page, the planet file and the CDN behind it.
+- **Tiles:** the map frontend, a vector tile and its content type, the tile metadata, a style and `version.json` on tiles.versatiles.org, and whether it serves the newest planet (7 days after a release at the latest).
+- **Satellite:** a tile from the tile server's local copy (zoom 5) and one it takes from the CDN (zoom 17), their content type, and the metadata.
+- **Download:** the download page, the planet file and the CDN behind it, and whether the newest planet is at most 180 days old.
 - **Geocoding:** a search on geocode.versatiles.org.
 - **Websites:** versatiles.org and docs.versatiles.org.
 - **DNS:** the A records of the servers, the CNAMEs of download and docs, the name servers and the expiry of the domains.
 
 Besides the status code and response time, the checks look at the content (a tile of the expected size, a style with its layers, a search that finds Berlin) and at TLS certificates that are less than 14 days from expiry.
 
-An alert is sent after three failed checks in a row, and again when the check has passed twice. Gatus doesn't group alerts, so only the checks that matter most for each service send them: the vector tile and the style, the download page and the CDN, geocoding, the websites, DNS and domains. The map frontend, the tile metadata, `version.json` and the planet file show on the page only, so a server going down sends two messages, not five.
+Gatus can't read response headers or compare dates, so the content types and the planet dates are checked by [`bin/push/checks.sh`](bin/push/checks.sh). Cron runs it every 10 minutes, and it reports each result to Gatus. If it stops reporting for 30 minutes, those checks fail.
+
+An alert is sent after three failed checks in a row, and again when the check has passed twice. Gatus doesn't group alerts, so only the checks that matter most for each service send them: the vector tile and the style, both satellite tiles, the content types and planet dates, the download page and the CDN, geocoding, the websites, DNS and domains. The map frontend, the tile metadata, the satellite metadata, `version.json` and the planet file show on the page only. If tiles.versatiles.org goes down completely, that's four messages, one per alerting tile check; the push checks skip a source that doesn't answer.
 
 ## Architecture
 
 - **gatus:** runs the checks, keeps the uptime history in SQLite (`volumes/gatus-data`) and serves the page.
 - **nginx:** TLS in front of Gatus, and the certbot challenge.
 - **certbot:** Let's Encrypt certificate, renewed weekly by cron.
+- **bin/push/checks.sh:** the checks Gatus can't run, every 10 minutes by cron on the host. It reports with `GATUS_PUSH_TOKEN`, which `bin/setup.sh` and `bin/update.sh` generate into `.env`.
 
 The configuration of both Gatus and nginx reaches the containers through directory mounts, so `bin/update.sh` applies it without recreating them.
 
@@ -48,7 +52,8 @@ The status server can't report its own outage. Add an external uptime monitor (f
 ```sh
 ./bin/update.sh    # pull, apply new images and configs, verify
 ./bin/verify.sh    # check that this server serves the page with all endpoints
-tests/config.sh    # start Gatus locally with the config and print the results (needs docker and jq)
+./bin/push/checks.sh  # run the push checks now and print their results
+tests/config.sh    # start Gatus locally with the config, run the push checks against it, print the results (needs docker and jq)
 ```
 
 To change a check, edit `gatus/config.yaml`, run `tests/config.sh`, commit and run `bin/update.sh` on the server.
