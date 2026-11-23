@@ -6,8 +6,8 @@ set -euo pipefail
 #
 # Usage:
 #   bin/user.sh list
-#   bin/user.sh add <name>       asks for the password
-#   bin/user.sh passwd <name>    asks for the new password, ends the user's sessions
+#   bin/user.sh add <name>       asks for the password; Enter generates one
+#   bin/user.sh passwd <name>    the same for a new password; ends the user's sessions
 #   bin/user.sh remove <name>    ends the user's sessions
 
 cd "$(dirname "$0")/.."
@@ -32,16 +32,28 @@ case "$command" in
 		;;
 	add | passwd)
 		[ -n "$name" ] || usage
-		read -rsp "Password for $name (at least 12 characters): " password
+		read -rsp "Password for $name (at least 12 characters, or Enter for a generated one): " password
 		echo
-		read -rsp "Repeat it: " repeated
-		echo
-		if [ "$password" != "$repeated" ]; then
-			echo "Error: the passwords differ." >&2
-			exit 1
+		if [ -z "$password" ]; then
+			# 24 characters from 18 random bytes, without the base64 characters
+			# that are awkward to type or to pass on.
+			password=$(openssl rand -base64 18 | tr '+/' '-_')
+			generated=true
+		else
+			read -rsp "Repeat it: " repeated
+			echo
+			if [ "$password" != "$repeated" ]; then
+				echo "Error: the passwords differ." >&2
+				exit 1
+			fi
+			generated=false
 		fi
 		# On stdin, so the password appears neither in the process list nor in a log.
 		printf '%s' "$password" | cli "$command" "$name"
+		if [ "$generated" = "true" ]; then
+			echo "Password for $name: $password"
+			echo "It is shown only now. Pass it on through a password manager or another private channel."
+		fi
 		;;
 	remove)
 		[ -n "$name" ] || usage
