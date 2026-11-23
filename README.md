@@ -7,7 +7,7 @@ Checks the health of the VersaTiles services every minute, shows their state and
 
 ## What is checked
 
-All checks are in [`gatus/config.yaml`](gatus/config.yaml), run by [Gatus](https://github.com/TwiN/gatus):
+All checks are in [`gatus/config.yaml`](gatus/config.yaml), run by [Gatus](https://github.com/TwiN/gatus). The page groups them by importance: **Availability** (is each service up), **Content** (does it serve the right thing), **DNS and domains**, and **Map data age**. By service:
 
 - **Tiles:** the map frontend, a vector tile and its content type, the tile metadata, a style and `version.json` on tiles.versatiles.org, and whether it serves the newest planet (7 days after a release at the latest).
 - **Satellite:** a tile from the tile server's local copy (zoom 5) and one it takes from the CDN (zoom 17), their content type, and the metadata.

@@ -40,6 +40,12 @@ for _ in $(seq 1 30); do
 	curl -sf "http://127.0.0.1:$PORT/api/v1/endpoints/statuses" >/dev/null && break
 	sleep 1
 done
+# Gatus exits at once on a config it can't parse.
+if [ "$(docker inspect -f '{{.State.Running}}' "$NAME")" != "true" ]; then
+	echo "Error: Gatus exited. Its log:" >&2
+	docker logs "$NAME" >&2
+	exit 1
+fi
 echo "Running bin/push/checks.sh against it..."
 PUSH_URL="http://127.0.0.1:$PORT" GATUS_PUSH_TOKEN="$TOKEN" bin/push/checks.sh
 

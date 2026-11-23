@@ -65,11 +65,11 @@ check_content_type() {
 	fi
 }
 
-check_content_type tiles_vector-tile-content-type application/vnd.mapbox-vector-tile \
+check_content_type content_map-tiles:-vector-tile-content-type application/vnd.mapbox-vector-tile \
 	"$TILES/tiles/osm/5/17/10"
 
 # Zoom 5 comes from the tile server's local copy, zoom 17 from the CDN.
-check_content_type satellite_satellite-tile-content-type image/webp \
+check_content_type content_satellite:-tile-content-type image/webp \
 	"$TILES/tiles/satellite/5/17/10" \
 	"$TILES/tiles/satellite/17/70420/42986"
 
@@ -80,13 +80,13 @@ age=""
 if page=$(curl -sf --max-time 20 "$DOWNLOAD/"); then
 	latest=$(grep -oE 'osm-vector\.[0-9]{8}\.versatiles' <<<"$page" | grep -oE '[0-9]{8}' | sort | tail -1 || true)
 	if [ -z "$latest" ]; then
-		report download_planet-release "No osm-vector.YYYYMMDD.versatiles found on $DOWNLOAD/."
+		report map-data-age_download:-newest-planet "No osm-vector.YYYYMMDD.versatiles found on $DOWNLOAD/."
 	else
 		age=$(jq -n --arg d "$latest" '(now - ($d | strptime("%Y%m%d") | mktime)) / 86400 | floor')
 		if [ "$age" -gt "$MAX_PLANET_AGE_DAYS" ]; then
-			report download_planet-release "The newest planet, $latest, is $age days old (limit: $MAX_PLANET_AGE_DAYS)."
+			report map-data-age_download:-newest-planet "The newest planet, $latest, is $age days old (limit: $MAX_PLANET_AGE_DAYS)."
 		else
-			report download_planet-release ""
+			report map-data-age_download:-newest-planet ""
 		fi
 	fi
 fi
@@ -96,10 +96,10 @@ fi
 if [ -n "$latest" ] && meta=$(curl -sf --max-time 20 "$TILES/tiles/osm/meta.json"); then
 	built=$(jq -r '."planetiler:buildtime" // "" | .[0:10] | gsub("-"; "")' <<<"$meta")
 	if [ -z "$built" ]; then
-		report tiles_newest-planet-served "$TILES/tiles/osm/meta.json has no planetiler:buildtime."
+		report map-data-age_map-tiles:-newest-planet-served "$TILES/tiles/osm/meta.json has no planetiler:buildtime."
 	elif [ "$built" -ge "$latest" ] || [ "$age" -le "$GRACE_DAYS" ]; then
-		report tiles_newest-planet-served ""
+		report map-data-age_map-tiles:-newest-planet-served ""
 	else
-		report tiles_newest-planet-served "tiles.versatiles.org serves the planet built $built, but $latest was released $age days ago. Run bin/update.sh there."
+		report map-data-age_map-tiles:-newest-planet-served "tiles.versatiles.org serves the planet built $built, but $latest was released $age days ago. Run bin/update.sh there."
 	fi
 fi
