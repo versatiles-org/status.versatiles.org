@@ -14,13 +14,14 @@ All checks are in [`gatus/config.yaml`](gatus/config.yaml), run by [Gatus](https
 - **Download:** the download page, the planet file and the CDN behind it, and whether the newest planet is at most 180 days old.
 - **Geocoding:** a search on geocode.versatiles.org.
 - **Websites:** versatiles.org and docs.versatiles.org.
+- **Status page:** this page itself, through its public address, mainly for its certificate: the only one renewed on this server.
 - **DNS:** the A records of the servers, the CNAMEs of download and docs, the name servers and the expiry of the domains.
 
 Besides the status code and response time, the checks look at the content (a tile of the expected size, a style with its layers, a search that finds Berlin) and at TLS certificates that are less than 14 days from expiry.
 
 Gatus can't read response headers or compare dates, so the content types and the planet dates are checked by [`bin/push/checks.sh`](bin/push/checks.sh). Cron runs it every 10 minutes, and it reports each result to Gatus. If it stops reporting for 30 minutes, those checks fail.
 
-An alert is sent after three failed checks in a row, and again when the check has passed twice. Gatus doesn't group alerts, so only the checks that matter most for each service send them: the vector tile and the style, both satellite tiles, the content types and planet dates, the download page and the CDN, geocoding, the websites, DNS and domains. The map frontend, the tile metadata, the satellite metadata, `version.json` and the planet file show on the page only. If tiles.versatiles.org goes down completely, that's four messages, one per alerting tile check; the push checks skip a source that doesn't answer.
+An alert is sent after three failed checks in a row, and again when the check has passed twice. Gatus doesn't group alerts, so only the checks that matter most for each service send them: the vector tile and the style, both satellite tiles, the content types and planet dates, the download page and the CDN, geocoding, the websites, the status page, DNS and domains. The map frontend, the tile metadata, the satellite metadata, `version.json` and the planet file show on the page only. If tiles.versatiles.org goes down completely, that's four messages, one per alerting tile check; the push checks skip a source that doesn't answer.
 
 ## Architecture
 

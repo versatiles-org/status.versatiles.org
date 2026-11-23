@@ -252,6 +252,18 @@ endpoints:
       - "[CERTIFICATE_EXPIRATION] > 336h"
     alerts: *alerts
 
+  # This server itself, through its public address. Mainly for its certificate,
+  # the only one renewed here (bin/cert): a broken renewal would otherwise only
+  # show when the page fails. Gatus reaches the internet, so it can still alert.
+  - name: "Status page: status.versatiles.org"
+    group: Availability
+    url: https://status.versatiles.org/
+    conditions:
+      - "[STATUS] == 200"
+      - "[BODY] == pat(*<title>VersaTiles Status*)"
+      - "[CERTIFICATE_EXPIRATION] > 336h"
+    alerts: *alerts
+
   # DNS and domains. The A records name the servers on purpose: a changed
   # record is either a planned move, which updates this file, or a problem.
 
