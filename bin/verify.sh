@@ -20,7 +20,17 @@ fail() {
 
 echo "Verifying ${BASE} on this server..."
 
-if "${CURL[@]}" -o /dev/null "$BASE/"; then
+# Retried: `nginx -s reload` returns before the reload is done, so right after
+# setup or a renewal the old workers may still serve the previous certificate.
+page_ok=false
+for _ in $(seq 1 10); do
+	if "${CURL[@]}" -o /dev/null "$BASE/"; then
+		page_ok=true
+		break
+	fi
+	sleep 1
+done
+if [ "$page_ok" = "true" ]; then
 	echo "  ok: the page answers with a valid certificate."
 else
 	fail "the page doesn't answer over HTTPS, or its certificate is invalid."
