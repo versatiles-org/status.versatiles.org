@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<meta name="robots" content="noindex" />
+		<title>Log in · VersaTiles Status</title>
+		<style>
+			:root {
+				color-scheme: dark;
+				--bg: #1b1b1f;
+				--card: #232328;
+				--border: #36363c;
+				--text: #ccc;
+				--accent: #9d35ff;
+				--error: #f85149;
+			}
+			* {
+				box-sizing: border-box;
+			}
+			body {
+				margin: 0;
+				min-height: 100vh;
+				display: grid;
+				place-items: center;
+				padding: 16px;
+				background: var(--bg);
+				color: var(--text);
+				font: 16px/1.4 system-ui, sans-serif;
+			}
+			main {
+				width: 100%;
+				max-width: 360px;
+				padding: 32px 28px;
+				background: var(--card);
+				border: 1px solid var(--border);
+				border-radius: 8px;
+			}
+			header {
+				display: flex;
+				align-items: center;
+				gap: 12px;
+				margin-bottom: 24px;
+			}
+			header img {
+				width: 40px;
+				height: 40px;
+			}
+			h1 {
+				margin: 0;
+				font-size: 20px;
+				color: #fff;
+			}
+			label {
+				display: block;
+				margin: 16px 0 6px;
+				font-size: 14px;
+			}
+			input {
+				width: 100%;
+				padding: 10px 12px;
+				font: inherit;
+				color: #fff;
+				background: var(--bg);
+				border: 1px solid var(--border);
+				border-radius: 6px;
+			}
+			input:focus,
+			button:focus-visible {
+				outline: 2px solid var(--accent);
+				outline-offset: 1px;
+			}
+			button {
+				width: 100%;
+				margin-top: 24px;
+				padding: 10px;
+				font: inherit;
+				font-weight: 600;
+				color: #fff;
+				background: var(--accent);
+				border: 0;
+				border-radius: 6px;
+				cursor: pointer;
+			}
+			.error {
+				margin: 0 0 8px;
+				color: var(--error);
+			}
+			footer {
+				margin-top: 20px;
+				font-size: 14px;
+				text-align: center;
+			}
+			footer a {
+				color: inherit;
+			}
+		</style>
+	</head>
+	<body>
+		<main>
+			<header>
+				<img src="https://versatiles.org/assets/logo/versatiles.svg" alt="" />
+				<h1>Maintainer area</h1>
+			</header>
+			{{error}}
+			<form method="post" action="/login">
+				<input type="hidden" name="next" value="{{next}}" />
+				<label for="name">User name</label>
+				<input id="name" name="name" autocomplete="username" autocapitalize="none" required autofocus />
+				<label for="password">Password</label>
+				<input id="password" name="password" type="password" autocomplete="current-password" required />
+				<button type="submit">Log in</button>
+			</form>
+			<footer><a href="/">Back to the public status page</a></footer>
+		</main>
+	</body>
+</html>

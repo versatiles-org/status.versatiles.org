@@ -1,0 +1,9 @@
+{
+	"name": "status-login",
+	"private": true,
+	"description": "Login service for the private area of status.versatiles.org. No dependencies on purpose.",
+	"type": "module",
+	"scripts": {
+		"test": "node --test"
+	}
+}

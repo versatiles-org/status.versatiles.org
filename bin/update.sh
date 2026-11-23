@@ -29,8 +29,10 @@ if [ "$HEAD_BEFORE" != "$HEAD_AFTER" ] && [ -z "${UPDATE_REEXECUTED:-}" ]; then
 fi
 HEAD_BEFORE=${HEAD_BEFORE_UPDATE:-$HEAD_BEFORE}
 
-# Before `up`, so a newly generated token reaches Gatus.
-ensure_push_token
+# Before `up`, so newly generated secrets reach the containers.
+ensure_secrets
+
+mkdir -p ./volumes/login
 
 # Recreates only the containers whose image or definition changed.
 docker compose pull --quiet
@@ -45,6 +47,13 @@ reload_nginx
 if ! git diff --quiet "$HEAD_BEFORE" HEAD -- gatus/; then
 	echo "The Gatus config changed, restarting Gatus."
 	docker compose restart gatus
+fi
+
+# The login service reads its code at start, through a directory mount.
+if ! git diff --quiet "$HEAD_BEFORE" HEAD -- login/; then
+	echo "The login service changed, restarting it."
+	docker compose restart login
+	wait_for_healthy login
 fi
 
 # Before verify.sh: Gatus lists a push check only once it got a result, and

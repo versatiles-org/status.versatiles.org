@@ -28,3 +28,6 @@ jobs:
 
       - name: Start Gatus with the config
         run: tests/config.sh
+
+      - name: Test the login service
+        run: tests/login.sh

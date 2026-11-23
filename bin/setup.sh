@@ -16,9 +16,9 @@ if [ -z "${PUSHOVER_APPLICATION_TOKEN:-}" ] || [ -z "${PUSHOVER_USER_KEY:-}" ]; 
 	echo "Warning: the Pushover keys in .env are empty, so no alerts will be sent."
 fi
 
-ensure_push_token
+ensure_secrets
 
-mkdir -p ./volumes/gatus-data ./volumes/certbot-www ./volumes/certbot-cert ./volumes/nginx-cert
+mkdir -p ./volumes/gatus-data ./volumes/certbot-www ./volumes/certbot-cert ./volumes/nginx-cert ./volumes/login
 
 # nginx needs some certificate to start, and must be running for certbot.
 ./bin/cert/create_dummy.sh
@@ -34,4 +34,4 @@ wait_for_healthy nginx
 ./bin/push/checks.sh
 ./bin/verify.sh
 
-echo "Setup completed."
+echo "Setup completed. Add a user for the private area with: ./bin/user.sh add <name>"

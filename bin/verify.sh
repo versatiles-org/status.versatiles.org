@@ -11,6 +11,8 @@ load_env
 
 BASE="https://${DOMAIN_NAME}"
 CURL=(curl -sf --max-time 10 --resolve "${DOMAIN_NAME}:443:127.0.0.1")
+# The same, but without -f: for answers that aren't 200.
+CURL_ANY=(curl -s --max-time 10 --resolve "${DOMAIN_NAME}:443:127.0.0.1")
 failed=0
 
 fail() {
@@ -62,6 +64,19 @@ if [ "$loaded" -eq "$expected" ]; then
 	echo "  ok: Gatus has loaded all $expected endpoints."
 else
 	fail "Gatus lists $loaded endpoints, gatus/config.yaml defines $expected. Push checks only show up after their first result (bin/push/checks.sh). See: docker compose logs gatus"
+fi
+
+# The private area: closed without a session, and the login page answers.
+private=$("${CURL_ANY[@]}" -o /dev/null -w '%{http_code} %{redirect_url}' "$BASE/private/" || true)
+if [ "$private" = "302 ${BASE}/login?next=/private/" ]; then
+	echo "  ok: the private area sends visitors without a session to the login page."
+else
+	fail "the private area answered '$private' without a session, expected a redirect to the login page."
+fi
+if "${CURL[@]}" "$BASE/login" | grep -q 'name="password"'; then
+	echo "  ok: the login page answers."
+else
+	fail "the login page doesn't answer. See: docker compose logs login"
 fi
 
 if [ "$failed" -ne 0 ]; then

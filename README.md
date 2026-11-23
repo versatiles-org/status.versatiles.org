@@ -27,6 +27,7 @@ An alert is sent after three failed checks in a row, and again when the check ha
 - **gatus:** runs the checks, keeps the uptime history in SQLite (`volumes/gatus-data`) and serves the page.
 - **nginx:** TLS in front of Gatus, and the certbot challenge.
 - **certbot:** Let's Encrypt certificate, renewed weekly by cron.
+- **login:** the login for the private area at `/private/`, a small Node service without dependencies ([`login/`](login/)). nginx asks it about every request there (`auth_request`). Passwords are stored as scrypt hashes in `volumes/login/users`, sessions are signed cookies that last 7 days. Removing a user or changing their password ends their sessions at once. Logins are limited to 10 per minute per address.
 - **bin/push/checks.sh:** the checks Gatus can't run, every 10 minutes by cron on the host. It reports with `GATUS_PUSH_TOKEN`, which `bin/setup.sh` and `bin/update.sh` generate into `.env`.
 
 The configuration of both Gatus and nginx reaches the containers through directory mounts, so `bin/update.sh` applies it without recreating them.
@@ -41,6 +42,7 @@ The configuration of both Gatus and nginx reaches the containers through directo
    cd /root/status.versatiles.org
    cp template.env .env   # then fill in EMAIL and the Pushover keys
    ./bin/setup.sh
+   ./bin/user.sh add <name>   # a user for the private area
    ```
 
 `.env` holds the secrets and is not committed. Keep a copy in the password manager, so a rebuilt server can be set up again.
@@ -53,6 +55,8 @@ The status server can't report its own outage. Add an external uptime monitor (f
 ./bin/update.sh    # pull, apply new images and configs, verify
 ./bin/verify.sh    # check that this server serves the page with all endpoints
 ./bin/push/checks.sh  # run the push checks now and print their results
+./bin/user.sh list    # users of the private area; also add <name>, passwd <name>, remove <name>
+tests/login.sh     # test the login service (needs docker)
 tests/config.sh    # start Gatus locally with the config, run the push checks against it, print the results (needs docker and jq)
 ```
 
