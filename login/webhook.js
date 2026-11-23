@@ -1,10 +1,13 @@
 // GitHub webhook receiver, served by the login service at POST /webhook.
 //
-// It checks the X-Hub-Signature-256 signature with WEBHOOK_SECRET and, for a
-// push to the default branch of the dashboard repo (DASHBOARD_REPO), writes a
-// file named after the job into the queue directory. The container can't run
-// the job itself; a systemd path unit on the host does, see bin/webhook/. Many
-// pushes while a job runs leave one file, so they cause one more run.
+// It checks the X-Hub-Signature-256 signature with WEBHOOK_SECRET and writes a
+// file named after each job the event asks for into the queue directory:
+// - dashboard: a push to the default branch of DASHBOARD_REPO.
+// - update: CI passed on the default branch of UPDATE_REPO (this repo), so the
+//   server pulls and applies it with bin/update.sh.
+// The container can't run the job itself; a systemd path unit on the host
+// does, see bin/webhook/. Many events while a job runs leave one file, so they
+// cause one more run.
 
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import { writeFileSync } from 'node:fs';
@@ -14,9 +17,13 @@ import { join } from 'node:path';
 // below this. nginx has the same limit (client_max_body_size).
 export const MAX_WEBHOOK_BYTES = 5 * 1024 * 1024;
 
-/** "owner/name" of a GitHub repo URL (SSH or HTTPS), lowercase, or undefined. */
+// The CI workflow whose success deploys UPDATE_REPO.
+const CI_WORKFLOW = '.github/workflows/ci.yml';
+
+/** "owner/name" of a GitHub repo, given as URL (SSH or HTTPS) or as "owner/name", lowercase, or undefined. */
 export function repoName(url) {
-	const match = /github\.com[:/]([^/]+\/[^/]+?)(?:\.git)?\/?$/.exec(url ?? '');
+	const match =
+		/github\.com[:/]([^/]+\/[^/]+?)(?:\.git)?\/?$/.exec(url ?? '') ?? /^([\w.-]+\/[\w.-]+)$/.exec(url ?? '');
 	return match?.[1].toLowerCase();
 }
 
@@ -49,13 +56,39 @@ function readRawBody(req) {
 	});
 }
 
-/** The jobs an event asks for. Only one so far: rebuilding the dashboard. */
-export function jobsFor(event, payload, { dashboardRepo }) {
-	if (event !== 'push') return [];
+/** The jobs an event asks for. */
+export function jobsFor(event, payload, { dashboardRepo, updateRepo }) {
 	const repo = payload.repository;
-	if (!repo || payload.ref !== `refs/heads/${repo.default_branch}`) return [];
-	const dashboard = repoName(dashboardRepo);
-	if (dashboard && repoName(repo.html_url ?? repo.ssh_url) === dashboard) return ['dashboard'];
+	if (!repo) return [];
+	const name = repoName(repo.full_name);
+
+	if (event === 'push') {
+		const dashboard = repoName(dashboardRepo);
+		if (dashboard && name === dashboard && payload.ref === `refs/heads/${repo.default_branch}`) {
+			return ['dashboard'];
+		}
+		return [];
+	}
+
+	// Only a finished, successful CI run for a push to the default branch of
+	// this repo itself. A pull request, even from a fork with a branch named
+	// like the default one, never deploys.
+	if (event === 'workflow_run') {
+		const run = payload.workflow_run;
+		const update = repoName(updateRepo);
+		if (
+			update &&
+			name === update &&
+			payload.action === 'completed' &&
+			run?.conclusion === 'success' &&
+			run.event === 'push' &&
+			run.path === CI_WORKFLOW &&
+			run.head_branch === repo.default_branch &&
+			repoName(run.head_repository?.full_name) === update
+		) {
+			return ['update'];
+		}
+	}
 	return [];
 }
 
@@ -64,7 +97,7 @@ export function jobsFor(event, payload, { dashboardRepo }) {
  * Answers: 200 for ping and for events with nothing to do, 202 when jobs were
  * queued, 401 for a missing or wrong signature, 400 for a body that isn't JSON.
  */
-export function createWebhookHandler({ secret, queueDir, dashboardRepo, now = () => Date.now() }) {
+export function createWebhookHandler({ secret, queueDir, dashboardRepo, updateRepo, now = () => Date.now() }) {
 	return async function handleWebhook(req, res) {
 		if (!secret) return res.writeHead(404).end();
 
@@ -90,7 +123,7 @@ export function createWebhookHandler({ secret, queueDir, dashboardRepo, now = ()
 			return res.writeHead(400).end('Set the webhook content type to application/json.\n');
 		}
 
-		const jobs = jobsFor(event, payload, { dashboardRepo });
+		const jobs = jobsFor(event, payload, { dashboardRepo, updateRepo });
 		for (const job of jobs) writeFileSync(join(queueDir, job), `${new Date(now()).toISOString()}\n`);
 		const from = payload.repository?.full_name ?? 'unknown repo';
 		console.log(`Webhook ${event} from ${from}: ${jobs.length ? `queued ${jobs.join(', ')}` : 'nothing to do'}`);

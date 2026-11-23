@@ -21,4 +21,6 @@ run_job() {
 	fi
 }
 
+# The update first: it also regenerates the dashboard.
+run_job update ./bin/update.sh
 run_job dashboard ./bin/dashboard/update.sh

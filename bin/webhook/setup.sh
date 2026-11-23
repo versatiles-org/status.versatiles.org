@@ -5,12 +5,14 @@ set -euo pipefail
 # queues a job in volumes/webhook. Safe to run again. Called by bin/setup.sh and
 # bin/update.sh.
 #
-# The webhook itself is set up on GitHub, in the settings of the repo whose
-# pushes should trigger a job (only DASHBOARD_REPO so far):
+# The webhooks themselves are set up on GitHub, in the settings of each repo
+# whose events should trigger a job:
 #   Payload URL:  https://<DOMAIN_NAME>/webhook
 #   Content type: application/json
 #   Secret:       WEBHOOK_SECRET from .env
-#   Events:       Just the push event
+#   Events:       DASHBOARD_REPO: just the push event.
+#                 UPDATE_REPO: only "Workflow runs" (not pushes, so the
+#                 server updates only after CI passed).
 
 cd "$(dirname "$0")/../.."
 

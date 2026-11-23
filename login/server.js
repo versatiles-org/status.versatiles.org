@@ -180,6 +180,7 @@ if (import.meta.url === pathToFileURL(process.argv[1]).href) {
 			secret: process.env.WEBHOOK_SECRET,
 			queueDir: process.env.QUEUE_DIR ?? '/queue',
 			dashboardRepo: process.env.DASHBOARD_REPO,
+			updateRepo: process.env.UPDATE_REPO,
 		},
 	});
 	server.listen(8080, () => console.log('Login service listening on port 8080.'));

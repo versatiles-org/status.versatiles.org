@@ -283,9 +283,81 @@ describe('webhook', () => {
 		assert.equal(repoName('https://github.com/org/repo.git'), 'org/repo');
 		assert.equal(repoName(''), undefined);
 		assert.equal(repoName(undefined), undefined);
+		assert.equal(repoName('Org/Repo'), 'org/repo');
+		assert.equal(repoName('not a repo'), undefined);
 	});
 
 	test('jobsFor needs a dashboard repo', () => {
 		assert.deepEqual(jobsFor('push', push('example/dashboard'), { dashboardRepo: '' }), []);
+	});
+
+	describe('update after CI', () => {
+		const UPDATE_REPO = 'example/status';
+		function ciRun(overrides = {}, run = {}) {
+			return {
+				action: 'completed',
+				repository: { full_name: UPDATE_REPO, default_branch: 'main' },
+				workflow_run: {
+					conclusion: 'success',
+					event: 'push',
+					path: '.github/workflows/ci.yml',
+					head_branch: 'main',
+					head_repository: { full_name: UPDATE_REPO },
+					...run,
+				},
+				...overrides,
+			};
+		}
+		const jobs = (payload, updateRepo = UPDATE_REPO) => jobsFor('workflow_run', payload, { updateRepo });
+
+		test('a passing CI run on main of the repo queues the update', () => {
+			assert.deepEqual(jobs(ciRun()), ['update']);
+		});
+
+		test('nothing without UPDATE_REPO or for another repo', () => {
+			assert.deepEqual(jobs(ciRun(), ''), []);
+			assert.deepEqual(jobs(ciRun({ repository: { full_name: 'example/other', default_branch: 'main' } })), []);
+		});
+
+		test('nothing for a run that failed, is still running or ran another workflow', () => {
+			assert.deepEqual(jobs(ciRun({}, { conclusion: 'failure' })), []);
+			assert.deepEqual(jobs(ciRun({ action: 'requested' })), []);
+			assert.deepEqual(jobs(ciRun({}, { path: '.github/workflows/other.yml' })), []);
+		});
+
+		test('nothing for a pull request, a fork or another branch', () => {
+			assert.deepEqual(jobs(ciRun({}, { event: 'pull_request' })), []);
+			assert.deepEqual(jobs(ciRun({}, { head_repository: { full_name: 'someone/status' } })), []);
+			assert.deepEqual(jobs(ciRun({}, { head_branch: 'feature' })), []);
+		});
+
+		test('a push to the repo itself queues nothing', () => {
+			assert.deepEqual(jobsFor('push', push(UPDATE_REPO), { updateRepo: UPDATE_REPO }), []);
+		});
+
+		test('through the endpoint', async () => {
+			const server = createLoginServer({
+				usersFile,
+				secret: SECRET,
+				webhook: { secret: WEBHOOK_SECRET, queueDir, updateRepo: UPDATE_REPO },
+			});
+			await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+			try {
+				const body = JSON.stringify(ciRun());
+				const response = await fetch(`http://127.0.0.1:${server.address().port}/webhook`, {
+					method: 'POST',
+					headers: {
+						'Content-Type': 'application/json',
+						'X-GitHub-Event': 'workflow_run',
+						'X-Hub-Signature-256': signature(WEBHOOK_SECRET, body),
+					},
+					body,
+				});
+				assert.equal(response.status, 202);
+				assert.ok(existsSync(join(queueDir, 'update')));
+			} finally {
+				server.close();
+			}
+		});
 	});
 });
