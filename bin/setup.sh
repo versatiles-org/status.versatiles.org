@@ -18,7 +18,7 @@ fi
 
 ensure_secrets
 
-mkdir -p ./volumes/gatus-data ./volumes/certbot-www ./volumes/certbot-cert ./volumes/nginx-cert ./volumes/login ./volumes/dashboard
+mkdir -p ./volumes/gatus-data ./volumes/certbot-www ./volumes/certbot-cert ./volumes/nginx-cert ./volumes/login ./volumes/dashboard ./volumes/webhook
 
 # nginx needs some certificate to start, and must be running for certbot.
 ./bin/cert/create_dummy.sh
@@ -36,6 +36,7 @@ wait_for_healthy nginx
 # on GitHub first, so a failure here only warns.
 ./bin/dashboard/setup.sh
 ./bin/dashboard/update.sh || echo "Warning: the dashboard could not be generated. Is the deploy key added to the repo?"
+./bin/webhook/setup.sh
 ./bin/verify.sh
 
 echo "Setup completed. Add a user for the private area with: ./bin/user.sh add <name>"

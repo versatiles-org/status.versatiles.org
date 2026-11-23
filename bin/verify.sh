@@ -79,6 +79,19 @@ else
 	fail "the login page doesn't answer. See: docker compose logs login"
 fi
 
+# The webhook: refuses unsigned deliveries, and systemd watches its queue.
+webhook=$("${CURL_ANY[@]}" -o /dev/null -w '%{http_code}' -X POST -H 'Content-Type: application/json' -d '{}' "$BASE/webhook" || true)
+if [ "$webhook" = "401" ]; then
+	echo "  ok: the webhook refuses unsigned deliveries."
+else
+	fail "the webhook answered '$webhook' to an unsigned delivery, expected 401. See: docker compose logs login"
+fi
+if systemctl is-active --quiet status-webhook.path; then
+	echo "  ok: systemd runs the jobs the webhook queues."
+else
+	fail "status-webhook.path is not active. See bin/webhook/setup.sh"
+fi
+
 # The dashboard, if one is configured. It's regenerated every 15 minutes.
 if [ -n "${DASHBOARD_REPO:-}" ]; then
 	if [ ! -f ./volumes/dashboard/index.html ]; then

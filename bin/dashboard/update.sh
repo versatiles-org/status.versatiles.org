@@ -2,7 +2,8 @@
 set -euo pipefail
 
 # Regenerates the dashboard in the private area (/private/dashboard/). Run
-# every 15 minutes by cron, see setup.sh in this folder.
+# every 15 minutes by cron (see setup.sh in this folder) and after each push to
+# the dashboard repo by the webhook (see bin/webhook).
 #
 # The dashboard comes from a private repo, named by DASHBOARD_REPO in .env and
 # cloned with a read-only deploy key. That repo's `npm run dashboard -- --out
@@ -28,14 +29,15 @@ if [ ! -f "$KEY" ]; then
 fi
 export GIT_SSH_COMMAND="ssh -i $KEY -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new"
 
-# Only one run at a time; cron may start the next before a slow one ends.
-# Checked first, so a missing flock fails loudly instead of skipping every run.
+# One run at a time. A second one waits instead of giving up: a push may come
+# in after the running one has pulled. Checked first, so a missing flock fails
+# loudly instead of skipping every run.
 if ! command -v flock >/dev/null; then
 	echo "Error: flock is missing (Debian package util-linux)." >&2
 	exit 1
 fi
 exec 9>/tmp/status-dashboard.lock
-flock -n 9 || exit 0
+flock -w 600 9 || exit 0
 
 if [ ! -d "$SRC/.git" ]; then
 	git clone --quiet "$DASHBOARD_REPO" "$SRC"

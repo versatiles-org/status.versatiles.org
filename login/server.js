@@ -2,7 +2,8 @@
 //
 // nginx asks GET /auth about every request to /private/ (auth_request): 204 lets
 // it through, 401 sends the visitor to /login. The service also serves the
-// login page and handles POST /login and POST /logout. Nothing else is exposed;
+// login page and handles POST /login and POST /logout. It also receives the
+// GitHub webhook at POST /webhook, see webhook.js. Nothing else is exposed;
 // nginx only forwards these paths.
 //
 // A session is a cookie `name:expires:signature`, signed with LOGIN_SECRET
@@ -16,6 +17,7 @@ import { readFileSync } from 'node:fs';
 import http from 'node:http';
 import { pathToFileURL } from 'node:url';
 import { hashPassword, readUsers, verifyPassword } from './users.js';
+import { createWebhookHandler } from './webhook.js';
 
 export const COOKIE_NAME = 'versatiles_session';
 const SESSION_SECONDS = 7 * 24 * 60 * 60;
@@ -56,12 +58,13 @@ function readBody(req) {
 	});
 }
 
-export function createLoginServer({ usersFile, secret, now = () => Date.now() }) {
+export function createLoginServer({ usersFile, secret, webhook = {}, now = () => Date.now() }) {
 	if (!secret || secret.length < 32) throw new Error('LOGIN_SECRET must have at least 32 characters.');
 
 	// Checked against when a user doesn't exist, so a login takes as long for
 	// unknown names as for known ones and doesn't reveal which names exist.
 	const dummy = hashPassword('dummy', 'dummy password for timing');
+	const handleWebhook = createWebhookHandler({ ...webhook, now });
 
 	function sign(name, expires, user) {
 		return createHmac('sha256', secret).update(`${name}\n${expires}\n${user.hash}`).digest('base64url');
@@ -148,6 +151,10 @@ export function createLoginServer({ usersFile, secret, now = () => Date.now() })
 			return redirect(res, next, sessionCookie(user));
 		}
 
+		if (req.method === 'POST' && url.pathname === '/webhook') {
+			return handleWebhook(req, res);
+		}
+
 		if (req.method === 'POST' && url.pathname === '/logout') {
 			if (!sameOrigin(req)) return res.writeHead(403).end();
 			return redirect(res, '/login', `${COOKIE_NAME}=; Path=/; Max-Age=0; HttpOnly; Secure; SameSite=Lax`);
@@ -169,6 +176,11 @@ if (import.meta.url === pathToFileURL(process.argv[1]).href) {
 	const server = createLoginServer({
 		usersFile: process.env.USERS_FILE ?? '/data/users',
 		secret: process.env.LOGIN_SECRET,
+		webhook: {
+			secret: process.env.WEBHOOK_SECRET,
+			queueDir: process.env.QUEUE_DIR ?? '/queue',
+			dashboardRepo: process.env.DASHBOARD_REPO,
+		},
 	});
 	server.listen(8080, () => console.log('Login service listening on port 8080.'));
 	process.on('SIGTERM', () => server.close(() => process.exit(0)));

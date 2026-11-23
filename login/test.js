@@ -1,12 +1,13 @@
 // Tests for the login service: node --test (Node 24, no dependencies).
 
 import assert from 'node:assert/strict';
-import { mkdtempSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, before, describe, test } from 'node:test';
 import { COOKIE_NAME, createLoginServer, safeNext } from './server.js';
 import { hashPassword, readUsers, writeUsers } from './users.js';
+import { jobsFor, MAX_WEBHOOK_BYTES, repoName, signature } from './webhook.js';
 
 const PASSWORD = 'correct horse battery';
 const SECRET = 'a'.repeat(64);
@@ -191,5 +192,100 @@ describe('users file', () => {
 		const users = readUsers(usersFile);
 		assert.deepEqual([...users.keys()], ['alice']);
 		assert.equal(users.get('alice').N, 2 ** 17);
+	});
+});
+
+describe('webhook', () => {
+	const WEBHOOK_SECRET = 'w'.repeat(64);
+	const DASHBOARD_REPO = 'git@github.com:example/Dashboard.git';
+	let hookBase;
+	let hookServer;
+	let queueDir;
+
+	before(async () => {
+		queueDir = mkdtempSync(join(tmpdir(), 'webhook-test-'));
+		hookServer = createLoginServer({
+			usersFile,
+			secret: SECRET,
+			webhook: { secret: WEBHOOK_SECRET, queueDir, dashboardRepo: DASHBOARD_REPO },
+		});
+		await new Promise((resolve) => hookServer.listen(0, '127.0.0.1', resolve));
+		hookBase = `http://127.0.0.1:${hookServer.address().port}`;
+	});
+
+	after(() => hookServer.close());
+
+	function push(repo, ref = 'refs/heads/main') {
+		return {
+			ref,
+			repository: { full_name: repo, html_url: `https://github.com/${repo}`, default_branch: 'main' },
+		};
+	}
+
+	function send(event, payload, { sign = WEBHOOK_SECRET } = {}) {
+		const body = typeof payload === 'string' ? payload : JSON.stringify(payload);
+		const headers = { 'Content-Type': 'application/json', 'X-GitHub-Event': event };
+		if (sign) headers['X-Hub-Signature-256'] = signature(sign, body);
+		return fetch(`${hookBase}/webhook`, { method: 'POST', headers, body });
+	}
+
+	const queued = () => existsSync(join(queueDir, 'dashboard'));
+	const clear = () => rmSync(join(queueDir, 'dashboard'), { force: true });
+
+	test('does not exist without a secret', async () => {
+		assert.equal((await fetch(`${base}/webhook`, { method: 'POST', body: '{}' })).status, 404);
+	});
+
+	test('rejects a missing or wrong signature', async () => {
+		assert.equal((await send('push', push('example/dashboard'), { sign: false })).status, 401);
+		assert.equal((await send('push', push('example/dashboard'), { sign: 'x'.repeat(64) })).status, 401);
+		assert.equal(queued(), false);
+	});
+
+	test('answers a ping', async () => {
+		const response = await send('ping', { zen: 'Keep it simple.' });
+		assert.equal(response.status, 200);
+		assert.equal(await response.text(), 'pong\n');
+	});
+
+	test('a push to the dashboard repo queues the dashboard', async () => {
+		clear();
+		const response = await send('push', push('example/dashboard'));
+		assert.equal(response.status, 202);
+		assert.match(readFileSync(join(queueDir, 'dashboard'), 'utf8'), /^\d{4}-\d\d-\d\dT/);
+	});
+
+	test('other repos, branches and events queue nothing', async () => {
+		clear();
+		assert.equal((await send('push', push('example/other'))).status, 200);
+		assert.equal((await send('push', push('example/dashboard', 'refs/heads/feature'))).status, 200);
+		assert.equal((await send('issues', push('example/dashboard'))).status, 200);
+		assert.equal(queued(), false);
+	});
+
+	test('a form-encoded body is refused with a hint', async () => {
+		const response = await send('push', 'payload=%7B%7D');
+		assert.equal(response.status, 400);
+		assert.match(await response.text(), /application\/json/);
+	});
+
+	test('a body over the limit is refused', async () => {
+		const response = await send('push', 'x'.repeat(MAX_WEBHOOK_BYTES + 1), { sign: false }).catch(
+			(error) => error,
+		);
+		// The server may close the connection before fetch has sent everything.
+		assert.ok(response instanceof Error || response.status === 413);
+	});
+
+	test('repoName reads SSH and HTTPS URLs', () => {
+		assert.equal(repoName('git@github.com:Org/Repo.git'), 'org/repo');
+		assert.equal(repoName('https://github.com/org/repo'), 'org/repo');
+		assert.equal(repoName('https://github.com/org/repo.git'), 'org/repo');
+		assert.equal(repoName(''), undefined);
+		assert.equal(repoName(undefined), undefined);
+	});
+
+	test('jobsFor needs a dashboard repo', () => {
+		assert.deepEqual(jobsFor('push', push('example/dashboard'), { dashboardRepo: '' }), []);
 	});
 });

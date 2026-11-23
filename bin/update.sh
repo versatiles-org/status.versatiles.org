@@ -32,7 +32,7 @@ HEAD_BEFORE=${HEAD_BEFORE_UPDATE:-$HEAD_BEFORE}
 # Before `up`, so newly generated secrets reach the containers.
 ensure_secrets
 
-mkdir -p ./volumes/login ./volumes/dashboard
+mkdir -p ./volumes/login ./volumes/dashboard ./volumes/webhook
 
 # Recreates only the containers whose image or definition changed.
 docker compose pull --quiet
@@ -64,5 +64,6 @@ fi
 # on GitHub first, so a failure here only warns.
 ./bin/dashboard/setup.sh
 ./bin/dashboard/update.sh || echo "Warning: the dashboard could not be generated. Is the deploy key added to the repo?"
+./bin/webhook/setup.sh
 ./bin/verify.sh
 echo "Update completed."

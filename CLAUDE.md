@@ -7,5 +7,5 @@ Public status page and alerts for the VersaTiles services. The README describes 
 - Alerts are for outages and for things that go stale unnoticed, like an old planet. Failing CI or security alerts don't belong here.
 - This repo is public. The dashboard's content comes from a private repo at run time (`DASHBOARD_REPO`); never commit anything of it here, and don't name that repo in code or docs.
 - The login service in `login/` uses only Node's standard library, on purpose: no npm dependencies, no build, no package-lock. Keep it that way.
-- Verify with `tests/config.sh` (starts Gatus in Docker and hits the live services), `tests/login.sh` and `shellcheck -x bin/*.sh bin/cert/*.sh bin/push/*.sh bin/dashboard/*.sh tests/*.sh`, as CI does.
+- Verify with `tests/config.sh` (starts Gatus in Docker and hits the live services), `tests/login.sh` and `shellcheck -x bin/*.sh bin/cert/*.sh bin/push/*.sh bin/dashboard/*.sh bin/webhook/*.sh tests/*.sh`, as CI does.
 - Deployment follows `tiles.versatiles.org`: Docker Compose, nginx and certbot, `bin/update.sh`. Look there before inventing a new pattern.

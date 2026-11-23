@@ -28,7 +28,8 @@ An alert is sent after three failed checks in a row, and again when the check ha
 - **nginx:** TLS in front of Gatus, and the certbot challenge.
 - **certbot:** Let's Encrypt certificate, renewed weekly by cron.
 - **login:** the login for the private area at `/private/`, a small Node service without dependencies ([`login/`](login/)). nginx asks it about every request there (`auth_request`). Passwords are stored as scrypt hashes in `volumes/login/users`, sessions are signed cookies that last 7 days. Removing a user or changing their password ends their sessions at once. Logins are limited to 10 per minute per address.
-- **bin/dashboard/update.sh:** optional. Every 15 minutes by cron, it pulls the private repo named by `DASHBOARD_REPO` in `.env` with a read-only deploy key, runs that repo's `npm run dashboard -- --out <dir>` in the Node image, and nginx serves the result at `/private/dashboard/` behind the login. `bin/dashboard/setup.sh` creates the deploy key and prints it for the repo's settings.
+- **bin/dashboard/update.sh:** optional. Every 15 minutes by cron, and right after each push through the webhook, it pulls the private repo named by `DASHBOARD_REPO` in `.env` with a read-only deploy key, runs that repo's `npm run dashboard -- --out <dir>` in the Node image, and nginx serves the result at `/private/dashboard/` behind the login. `bin/dashboard/setup.sh` creates the deploy key and prints it for the repo's settings.
+- **webhook:** GitHub calls `POST /webhook` on each push to the dashboard repo. The login service checks the signature (`WEBHOOK_SECRET` in `.env`, generated like the other secrets) and drops a job file into `volumes/webhook`. A systemd path unit on the host notices it and runs [`bin/webhook/run.sh`](bin/webhook/run.sh), which starts the dashboard update. Pushes during a run lead to one more run. The cron job stays as a fallback for missed deliveries.
 - **bin/push/checks.sh:** the checks Gatus can't run, every 10 minutes by cron on the host. It reports with `GATUS_PUSH_TOKEN`, which `bin/setup.sh` and `bin/update.sh` generate into `.env`.
 
 The configuration of both Gatus and nginx reaches the containers through directory mounts, so `bin/update.sh` applies it without recreating them.
@@ -45,6 +46,8 @@ The configuration of both Gatus and nginx reaches the containers through directo
    ./bin/setup.sh
    ./bin/user.sh add <name>   # a user for the private area
    ```
+
+For the dashboard, add a webhook in the settings of the repo named by `DASHBOARD_REPO`: payload URL `https://status.versatiles.org/webhook`, content type `application/json`, the secret from `WEBHOOK_SECRET` in `.env`, and only the push event. GitHub's first delivery is a ping, which should get a green check under "Recent Deliveries".
 
 `.env` holds the secrets and is not committed. Keep a copy in the password manager, so a rebuilt server can be set up again.
 
