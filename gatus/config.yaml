@@ -21,6 +21,7 @@ ui:
   link: https://versatiles.org
   favicon:
     default: https://versatiles.org/assets/logo/favicon.ico
+    size16x16: https://versatiles.org/assets/logo/versatiles.16.png
     size32x32: https://versatiles.org/assets/logo/versatiles.32.png
   default-sort-by: group
   buttons:
