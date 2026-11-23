@@ -210,11 +210,12 @@ endpoints:
     conditions:
       - "[STATUS] == 200"
 
+  # Every minute like the other availability checks, so a broken bucket alerts
+  # within minutes. HEAD reads only the headers, about 43,000 requests a month.
   - name: "Download: CDN"
     group: Availability
     url: https://cdn.versatiles.cloud/osm-vector/osm-vector.versatiles
     method: HEAD
-    interval: 10m
     conditions:
       - "[STATUS] == 200"
       - "[CERTIFICATE_EXPIRATION] > 336h"
