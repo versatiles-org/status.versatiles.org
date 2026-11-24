@@ -29,6 +29,7 @@ An alert is sent after three failed checks in a row, and again when the check ha
 - **nginx:** TLS in front of Gatus, and the certbot challenge.
 - **certbot:** Let's Encrypt certificate, renewed weekly by cron.
 - **login:** the login for the private area at `/private/`, a small Node service without dependencies ([`login/`](login/)). nginx asks it about every request there (`auth_request`). Passwords are stored as scrypt hashes in `volumes/login/users`, sessions are signed cookies that last 7 days. Removing a user or changing their password ends their sessions at once. Logins are limited to 10 per minute per address.
+- **private area:** everything under `/private/` is behind the login. nginx adds the same bar to the top of every page there ([`nginx/private.conf`](nginx/private.conf), styled by [`private/bar.css`](private/bar.css)), with links to the areas and the logout, whichever tool generated the page. Each area keeps its own navigation below it.
 - **bin/dashboard/update.sh:** optional. Every 15 minutes by cron, and right after each push through the webhook, it pulls the private repo named by `DASHBOARD_REPO` in `.env` with a read-only deploy key, runs that repo's `npm run dashboard -- --out <dir>` in the Node image, and nginx serves the result at `/private/dashboard/` behind the login. `bin/dashboard/setup.sh` creates the deploy key and prints it for the repo's settings.
 - **webhook:** GitHub calls `POST /webhook`. The login service checks the signature (`WEBHOOK_SECRET` in `.env`, generated like the other secrets) and drops a job file into `volumes/webhook/now` or `volumes/webhook/batched`. A systemd path unit on the host notices a job in `now` and runs [`bin/webhook/run.sh`](bin/webhook/run.sh) (log: `journalctl -u status-webhook`); jobs in `batched` wait for their cron job. Events during a run lead to one more run. Three jobs:
   - **update:** when CI passes on `main` of this repo (`UPDATE_REPO` in `.env`), the server runs `bin/update.sh`. Pull requests and forks never deploy. A failed update shows only in the journal; if it breaks a service, the checks alert.
@@ -69,6 +70,7 @@ The status server can't report its own outage. Add an external uptime monitor (f
 ./bin/user.sh list    # users of the private area; also add <name>, passwd <name>, remove <name>
 tests/login.sh     # test the login service and the webhook (needs docker)
 tests/github-app.sh  # test the GitHub App token script (needs docker)
+tests/private.sh   # test the private area through nginx: login and the shared bar on every area (needs docker)
 tests/config.sh    # start Gatus locally with the config, run the push checks against it, print the results (needs docker and jq)
 ```
 

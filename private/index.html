@@ -15,14 +15,15 @@
 			}
 			body {
 				margin: 0;
-				padding: 32px 16px;
 				background: #1b1b1f;
 				color: #ccc;
 				font: 16px/1.5 system-ui, sans-serif;
 			}
+			/* No padding on body: the bar nginx adds at the top spans the page. */
 			main {
 				max-width: 720px;
 				margin: 0 auto;
+				padding: 32px 16px;
 			}
 			header {
 				display: flex;
@@ -39,16 +40,6 @@
 				font-size: 24px;
 				color: #fff;
 			}
-			button {
-				padding: 6px 14px;
-				font: inherit;
-				font-size: 14px;
-				color: #ccc;
-				background: transparent;
-				border: 1px solid #36363c;
-				border-radius: 6px;
-				cursor: pointer;
-			}
 			a {
 				color: inherit;
 			}
@@ -59,7 +50,6 @@
 			<header>
 				<img src="https://versatiles.org/assets/logo/versatiles.svg" alt="" />
 				<h1>Maintainer area</h1>
-				<form method="post" action="/logout"><button type="submit">Log out</button></form>
 			</header>
 			<ul>
 				<li><a href="/private/dashboard/">Dashboard</a>: what's urgent, what's important, and the state of every repo.</li>

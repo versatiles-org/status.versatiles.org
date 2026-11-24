@@ -34,3 +34,6 @@ jobs:
 
       - name: Test the GitHub App token script
         run: tests/github-app.sh
+
+      - name: Test the private area through nginx
+        run: tests/private.sh
