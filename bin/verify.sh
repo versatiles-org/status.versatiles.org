@@ -103,6 +103,17 @@ if [ -n "${DASHBOARD_REPO:-}" ]; then
 	fi
 fi
 
+# The dependency status, if configured. Regenerated at least every 6 hours.
+if [ -n "${GITHUB_APP_CLIENT_ID:-}" ]; then
+	if [ ! -f ./volumes/dependency-status/site/status.json ]; then
+		echo "  note: the dependency status hasn't been generated yet. See bin/dependency-status/update.sh."
+	elif [ -n "$(find ./volumes/dependency-status/site/status.json -mmin +420)" ]; then
+		fail "the dependency status is more than 7 hours old. See /var/log/status-dependency.log"
+	else
+		echo "  ok: the dependency status is up to date."
+	fi
+fi
+
 if [ "$failed" -ne 0 ]; then
 	echo "Verification failed."
 	exit 1

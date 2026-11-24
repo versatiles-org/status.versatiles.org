@@ -94,6 +94,8 @@ services:
       - ./private/:/var/www/private/:ro
       # The generated dashboard, see bin/dashboard/update.sh.
       - ./volumes/dashboard/:/var/www/dashboard/:ro
+      # The dependency status, see bin/dependency-status/update.sh.
+      - ./volumes/dependency-status/:/var/www/dependency-status/:ro
     security_opt:
       - no-new-privileges:true
     healthcheck:

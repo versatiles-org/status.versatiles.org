@@ -54,9 +54,16 @@ mkdir -p "$OUT"
 # In the same Node image as the login service. Dependencies only after a change,
 # since npm ci takes longer than the generation itself.
 run_node() {
-	docker run --rm -e NPM_CONFIG_UPDATE_NOTIFIER=false -v "$PWD/$SRC:/src" -v "$PWD/$OUT:/out" -w /src "$IMAGE" sh -c "$1"
+	docker run --rm -e NPM_CONFIG_UPDATE_NOTIFIER=false -v "$PWD/$SRC:/src" -v "$PWD/$OUT:/out" \
+		-v "$PWD/volumes/dependency-status:/status:ro" -w /src "$IMAGE" sh -c "$1"
 }
 if [ "$changed" = "true" ] || [ ! -d "$SRC/node_modules" ]; then
 	run_node "npm ci --no-audit --no-fund --loglevel=error"
 fi
-run_node "npm run --silent dashboard -- --out /out"
+# The repo status from this server's dependency status (bin/dependency-status),
+# once there is one; until then, the dashboard's own default.
+STATUS_ARG=""
+if [ -f ./volumes/dependency-status/site/status.json ]; then
+	STATUS_ARG="--status /status/site/status.json"
+fi
+run_node "npm run --silent dashboard -- --out /out $STATUS_ARG"

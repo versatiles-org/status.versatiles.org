@@ -5,12 +5,17 @@
 // - dashboard: a push to the default branch of DASHBOARD_REPO.
 // - update: CI passed on the default branch of UPDATE_REPO (this repo), so the
 //   server pulls and applies it with bin/update.sh.
-// The container can't run the job itself; a systemd path unit on the host
-// does, see bin/webhook/. Many events while a job runs leave one file, so they
-// cause one more run.
+// - dependency-status: something the dependency status shows changed in a
+//   public repo: a push or CI run on the default branch, a release, an issue or
+//   pull request opened or closed, a repo created, renamed or archived.
+// The container can't run the jobs itself. Jobs in `now/` start at once,
+// through a systemd path unit on the host (see bin/webhook/). Jobs in
+// `batched/` wait for a cron job, at most 10 minutes, so a burst of events
+// causes one run (see bin/dependency-status/). Many events while a job waits
+// or runs leave one file, so they cause one more run.
 
 import { createHmac, timingSafeEqual } from 'node:crypto';
-import { writeFileSync } from 'node:fs';
+import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 // GitHub's own limit is 25 MB, but a push with a few hundred commits stays far
@@ -19,6 +24,29 @@ export const MAX_WEBHOOK_BYTES = 5 * 1024 * 1024;
 
 // The CI workflow whose success deploys UPDATE_REPO.
 const CI_WORKFLOW = '.github/workflows/ci.yml';
+
+// Jobs that wait for cron instead of starting at once.
+export const BATCHED = new Set(['dependency-status']);
+
+// The events that change what the dependency status shows, by action where the
+// event has several.
+const STATUS_ACTIONS = {
+	release: ['published', 'deleted'],
+	issues: ['opened', 'closed', 'reopened', 'deleted', 'transferred'],
+	pull_request: ['opened', 'closed', 'reopened'],
+	repository: ['created', 'deleted', 'archived', 'unarchived', 'renamed', 'publicized', 'privatized'],
+};
+
+function changesDependencyStatus(event, payload) {
+	const repo = payload.repository;
+	// `privatized` is the one event about a now private repo that matters.
+	if (repo.private && payload.action !== 'privatized') return false;
+	if (event === 'push') return payload.ref === `refs/heads/${repo.default_branch}`;
+	if (event === 'workflow_run') {
+		return payload.action === 'completed' && payload.workflow_run?.head_branch === repo.default_branch;
+	}
+	return STATUS_ACTIONS[event]?.includes(payload.action) ?? false;
+}
 
 /** "owner/name" of a GitHub repo, given as URL (SSH or HTTPS) or as "owner/name", lowercase, or undefined. */
 export function repoName(url) {
@@ -61,13 +89,15 @@ export function jobsFor(event, payload, { dashboardRepo, updateRepo }) {
 	const repo = payload.repository;
 	if (!repo) return [];
 	const name = repoName(repo.full_name);
+	const jobs = [];
+	if (changesDependencyStatus(event, payload)) jobs.push('dependency-status');
 
 	if (event === 'push') {
 		const dashboard = repoName(dashboardRepo);
 		if (dashboard && name === dashboard && payload.ref === `refs/heads/${repo.default_branch}`) {
-			return ['dashboard'];
+			jobs.push('dashboard');
 		}
-		return [];
+		return jobs;
 	}
 
 	// Only a finished, successful CI run for a push to the default branch of
@@ -86,10 +116,10 @@ export function jobsFor(event, payload, { dashboardRepo, updateRepo }) {
 			run.head_branch === repo.default_branch &&
 			repoName(run.head_repository?.full_name) === update
 		) {
-			return ['update'];
+			jobs.push('update');
 		}
 	}
-	return [];
+	return jobs;
 }
 
 /**
@@ -124,7 +154,11 @@ export function createWebhookHandler({ secret, queueDir, dashboardRepo, updateRe
 		}
 
 		const jobs = jobsFor(event, payload, { dashboardRepo, updateRepo });
-		for (const job of jobs) writeFileSync(join(queueDir, job), `${new Date(now()).toISOString()}\n`);
+		for (const job of jobs) {
+			const dir = join(queueDir, BATCHED.has(job) ? 'batched' : 'now');
+			mkdirSync(dir, { recursive: true });
+			writeFileSync(join(dir, job), `${new Date(now()).toISOString()}\n`);
+		}
 		const from = payload.repository?.full_name ?? 'unknown repo';
 		console.log(`Webhook ${event} from ${from}: ${jobs.length ? `queued ${jobs.join(', ')}` : 'nothing to do'}`);
 		if (!jobs.length) return res.writeHead(200).end('nothing to do\n');

@@ -30,9 +30,11 @@ An alert is sent after three failed checks in a row, and again when the check ha
 - **certbot:** Let's Encrypt certificate, renewed weekly by cron.
 - **login:** the login for the private area at `/private/`, a small Node service without dependencies ([`login/`](login/)). nginx asks it about every request there (`auth_request`). Passwords are stored as scrypt hashes in `volumes/login/users`, sessions are signed cookies that last 7 days. Removing a user or changing their password ends their sessions at once. Logins are limited to 10 per minute per address.
 - **bin/dashboard/update.sh:** optional. Every 15 minutes by cron, and right after each push through the webhook, it pulls the private repo named by `DASHBOARD_REPO` in `.env` with a read-only deploy key, runs that repo's `npm run dashboard -- --out <dir>` in the Node image, and nginx serves the result at `/private/dashboard/` behind the login. `bin/dashboard/setup.sh` creates the deploy key and prints it for the repo's settings.
-- **webhook:** GitHub calls `POST /webhook`. The login service checks the signature (`WEBHOOK_SECRET` in `.env`, generated like the other secrets) and drops a job file into `volumes/webhook`. A systemd path unit on the host notices it and runs [`bin/webhook/run.sh`](bin/webhook/run.sh) (log: `journalctl -u status-webhook`). Events during a run lead to one more run. Two jobs:
+- **webhook:** GitHub calls `POST /webhook`. The login service checks the signature (`WEBHOOK_SECRET` in `.env`, generated like the other secrets) and drops a job file into `volumes/webhook/now` or `volumes/webhook/batched`. A systemd path unit on the host notices a job in `now` and runs [`bin/webhook/run.sh`](bin/webhook/run.sh) (log: `journalctl -u status-webhook`); jobs in `batched` wait for their cron job. Events during a run lead to one more run. Three jobs:
   - **update:** when CI passes on `main` of this repo (`UPDATE_REPO` in `.env`), the server runs `bin/update.sh`. Pull requests and forks never deploy. A failed update shows only in the journal; if it breaks a service, the checks alert.
   - **dashboard:** each push to the dashboard repo rebuilds the dashboard. Its cron job stays as a fallback for missed deliveries.
+  - **dependency-status** (batched): a push or CI run on the default branch, a release, an issue or pull request opened or closed, or a repo created, renamed or archived, in any public repo of the organisation.
+- **bin/dependency-status/update.sh:** optional. The [dependency status](https://github.com/versatiles-org/dependency-graph) at `/private/dependency-status/`, behind the login. Cron starts it every 10 minutes, and it runs when the webhook queued it or the last run is 6 hours old, so a burst of events leads to one run. It pulls the public dependency-graph repo, gets a read-only token from the GitHub App with [`github-app/token.mjs`](github-app/token.mjs), runs the collector (`npm run sync:deps`) and builds the page alone (`npm run build:status`). Then it rebuilds the dashboard, which takes its repo status from the same data.
 - **bin/push/checks.sh:** the checks Gatus can't run, every 10 minutes by cron on the host. It reports with `GATUS_PUSH_TOKEN`, which `bin/setup.sh` and `bin/update.sh` generate into `.env`.
 
 The configuration of both Gatus and nginx reaches the containers through directory mounts, so `bin/update.sh` applies it without recreating them.
@@ -50,12 +52,9 @@ The configuration of both Gatus and nginx reaches the containers through directo
    ./bin/user.sh add <name>   # a user for the private area
    ```
 
-Webhooks, both with payload URL `https://status.versatiles.org/webhook`, content type `application/json` and the secret from `WEBHOOK_SECRET` in `.env`:
+One webhook for the whole organisation (its settings → Webhooks), with payload URL `https://status.versatiles.org/webhook`, content type `application/json`, the secret from `WEBHOOK_SECRET` in `.env`, and the events Pushes, Releases, Issues, Pull requests, Repositories and Workflow runs. The receiver decides what each event triggers. GitHub's first delivery is a ping, which should get a green check under "Recent Deliveries".
 
-- In this repo's settings, with only "Workflow runs" selected, so the server updates itself after CI passes.
-- For the dashboard, in the settings of the repo named by `DASHBOARD_REPO`, with only the push event.
-
-GitHub's first delivery is a ping, which should get a green check under "Recent Deliveries".
+For the dependency status, a GitHub App of the organisation, installed on all repositories, without webhook, with read-only access to Checks, Commit statuses, Contents, Issues, Metadata and Pull requests. Its Client ID goes into `.env` as `GITHUB_APP_CLIENT_ID`, its private key to `volumes/github-app/private-key.pem` (`chmod 600`). Keep a copy of the key with the `.env` copy.
 
 `.env` holds the secrets and is not committed. Keep a copy in the password manager, so a rebuilt server can be set up again.
 
@@ -68,7 +67,8 @@ The status server can't report its own outage. Add an external uptime monitor (f
 ./bin/verify.sh    # check that this server serves the page with all endpoints
 ./bin/push/checks.sh  # run the push checks now and print their results
 ./bin/user.sh list    # users of the private area; also add <name>, passwd <name>, remove <name>
-tests/login.sh     # test the login service (needs docker)
+tests/login.sh     # test the login service and the webhook (needs docker)
+tests/github-app.sh  # test the GitHub App token script (needs docker)
 tests/config.sh    # start Gatus locally with the config, run the push checks against it, print the results (needs docker and jq)
 ```
 

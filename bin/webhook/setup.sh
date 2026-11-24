@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # Installs the systemd units that run bin/webhook/run.sh as soon as the webhook
-# queues a job in volumes/webhook. Safe to run again. Called by bin/setup.sh and
+# queues a job in volumes/webhook/now. Safe to run again. Called by bin/setup.sh and
 # bin/update.sh.
 #
 # The webhooks themselves are set up on GitHub, in the settings of each repo
@@ -10,9 +10,12 @@ set -euo pipefail
 #   Payload URL:  https://<DOMAIN_NAME>/webhook
 #   Content type: application/json
 #   Secret:       WEBHOOK_SECRET from .env
-#   Events:       DASHBOARD_REPO: just the push event.
-#                 UPDATE_REPO: only "Workflow runs" (not pushes, so the
-#                 server updates only after CI passed).
+#   Events:       Pushes, Releases, Issues, Pull requests, Repositories and
+#                 Workflow runs.
+# Best as one webhook for the whole organisation (its settings → Webhooks):
+# the dependency status needs events from every public repo, and the same
+# deliveries cover DASHBOARD_REPO and UPDATE_REPO. The receiver decides what
+# each event triggers.
 
 cd "$(dirname "$0")/../.."
 
@@ -23,7 +26,7 @@ fi
 
 PROJECT_DIR="$(pwd)"
 UNITS=/etc/systemd/system
-mkdir -p ./volumes/webhook
+mkdir -p ./volumes/webhook/now ./volumes/webhook/batched
 
 # DirectoryNotEmpty also triggers again after the service ends if a job was
 # queued in the meantime. The trigger limit stops a loop if a file can't be
@@ -32,7 +35,7 @@ PATH_UNIT="[Unit]
 Description=Start the jobs queued by the status.versatiles.org webhook
 
 [Path]
-DirectoryNotEmpty=${PROJECT_DIR}/volumes/webhook
+DirectoryNotEmpty=${PROJECT_DIR}/volumes/webhook/now
 TriggerLimitIntervalSec=60
 TriggerLimitBurst=10
 

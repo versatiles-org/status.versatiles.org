@@ -32,7 +32,7 @@ HEAD_BEFORE=${HEAD_BEFORE_UPDATE:-$HEAD_BEFORE}
 # Before `up`, so newly generated secrets reach the containers.
 ensure_secrets
 
-mkdir -p ./volumes/login ./volumes/dashboard ./volumes/webhook
+mkdir -p ./volumes/login ./volumes/dashboard ./volumes/dependency-status ./volumes/webhook/now ./volumes/webhook/batched
 
 # Recreates only the containers whose image or definition changed.
 docker compose pull --quiet
@@ -64,6 +64,9 @@ fi
 # on GitHub first, so a failure here only warns.
 ./bin/dashboard/setup.sh
 ./bin/dashboard/update.sh || echo "Warning: the dashboard could not be generated. Is the deploy key added to the repo?"
+# Optional too (GITHUB_APP_CLIENT_ID in .env). It rebuilds the dashboard when done.
+./bin/dependency-status/setup.sh
+./bin/dependency-status/update.sh --if-due || echo "Warning: the dependency status could not be generated. See README.md."
 ./bin/webhook/setup.sh
 ./bin/verify.sh
 echo "Update completed."

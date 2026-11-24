@@ -218,7 +218,8 @@ describe('webhook', () => {
 	function push(repo, ref = 'refs/heads/main') {
 		return {
 			ref,
-			repository: { full_name: repo, html_url: `https://github.com/${repo}`, default_branch: 'main' },
+			// Private, like the real dashboard repo, so the dependency status ignores it.
+			repository: { full_name: repo, html_url: `https://github.com/${repo}`, default_branch: 'main', private: true },
 		};
 	}
 
@@ -229,8 +230,8 @@ describe('webhook', () => {
 		return fetch(`${hookBase}/webhook`, { method: 'POST', headers, body });
 	}
 
-	const queued = () => existsSync(join(queueDir, 'dashboard'));
-	const clear = () => rmSync(join(queueDir, 'dashboard'), { force: true });
+	const queued = () => existsSync(join(queueDir, 'now', 'dashboard'));
+	const clear = () => rmSync(join(queueDir, 'now', 'dashboard'), { force: true });
 
 	test('does not exist without a secret', async () => {
 		assert.equal((await fetch(`${base}/webhook`, { method: 'POST', body: '{}' })).status, 404);
@@ -252,7 +253,7 @@ describe('webhook', () => {
 		clear();
 		const response = await send('push', push('example/dashboard'));
 		assert.equal(response.status, 202);
-		assert.match(readFileSync(join(queueDir, 'dashboard'), 'utf8'), /^\d{4}-\d\d-\d\dT/);
+		assert.match(readFileSync(join(queueDir, 'now', 'dashboard'), 'utf8'), /^\d{4}-\d\d-\d\dT/);
 	});
 
 	test('other repos, branches and events queue nothing', async () => {
@@ -291,12 +292,61 @@ describe('webhook', () => {
 		assert.deepEqual(jobsFor('push', push('example/dashboard'), { dashboardRepo: '' }), []);
 	});
 
+	describe('dependency status', () => {
+		const repository = { full_name: 'example/lib', default_branch: 'main', private: false };
+		const jobs = (event, payload) => jobsFor(event, { repository, ...payload }, {});
+		const STATUS = ['dependency-status'];
+
+		test('changes in a public repo queue it', () => {
+			assert.deepEqual(jobs('push', { ref: 'refs/heads/main' }), STATUS);
+			assert.deepEqual(jobs('release', { action: 'published' }), STATUS);
+			assert.deepEqual(jobs('issues', { action: 'closed' }), STATUS);
+			assert.deepEqual(jobs('pull_request', { action: 'opened' }), STATUS);
+			assert.deepEqual(jobs('repository', { action: 'archived' }), STATUS);
+			assert.deepEqual(
+				jobs('workflow_run', { action: 'completed', workflow_run: { head_branch: 'main' } }),
+				STATUS,
+			);
+		});
+
+		test('other branches, actions and events queue nothing', () => {
+			assert.deepEqual(jobs('push', { ref: 'refs/heads/feature' }), []);
+			assert.deepEqual(jobs('issues', { action: 'labeled' }), []);
+			assert.deepEqual(jobs('pull_request', { action: 'synchronize' }), []);
+			assert.deepEqual(jobs('workflow_run', { action: 'requested', workflow_run: { head_branch: 'main' } }), []);
+			assert.deepEqual(jobs('workflow_run', { action: 'completed', workflow_run: { head_branch: 'feature' } }), []);
+			assert.deepEqual(jobs('star', { action: 'created' }), []);
+		});
+
+		test('a private repo queues nothing, unless it just became private', () => {
+			const hidden = { ...repository, private: true };
+			assert.deepEqual(jobsFor('push', { repository: hidden, ref: 'refs/heads/main' }, {}), []);
+			assert.deepEqual(jobsFor('repository', { repository: hidden, action: 'privatized' }, {}), STATUS);
+		});
+
+		test('waits in batched/, not now/', async () => {
+			const body = JSON.stringify({ repository, action: 'published' });
+			const response = await fetch(`${hookBase}/webhook`, {
+				method: 'POST',
+				headers: {
+					'Content-Type': 'application/json',
+					'X-GitHub-Event': 'release',
+					'X-Hub-Signature-256': signature(WEBHOOK_SECRET, body),
+				},
+				body,
+			});
+			assert.equal(response.status, 202);
+			assert.ok(existsSync(join(queueDir, 'batched', 'dependency-status')));
+			assert.equal(existsSync(join(queueDir, 'now', 'dependency-status')), false);
+		});
+	});
+
 	describe('update after CI', () => {
 		const UPDATE_REPO = 'example/status';
 		function ciRun(overrides = {}, run = {}) {
 			return {
 				action: 'completed',
-				repository: { full_name: UPDATE_REPO, default_branch: 'main' },
+				repository: { full_name: UPDATE_REPO, default_branch: 'main', private: true },
 				workflow_run: {
 					conclusion: 'success',
 					event: 'push',
@@ -316,7 +366,7 @@ describe('webhook', () => {
 
 		test('nothing without UPDATE_REPO or for another repo', () => {
 			assert.deepEqual(jobs(ciRun(), ''), []);
-			assert.deepEqual(jobs(ciRun({ repository: { full_name: 'example/other', default_branch: 'main' } })), []);
+			assert.deepEqual(jobs(ciRun({ repository: { full_name: 'example/other', default_branch: 'main', private: true } })), []);
 		});
 
 		test('nothing for a run that failed, is still running or ran another workflow', () => {
@@ -354,7 +404,7 @@ describe('webhook', () => {
 					body,
 				});
 				assert.equal(response.status, 202);
-				assert.ok(existsSync(join(queueDir, 'update')));
+				assert.ok(existsSync(join(queueDir, 'now', 'update')));
 			} finally {
 				server.close();
 			}

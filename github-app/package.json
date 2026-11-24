@@ -1,0 +1,9 @@
+{
+	"name": "status-github-app",
+	"private": true,
+	"description": "Gets a read-only token of the GitHub App for status.versatiles.org. No dependencies on purpose.",
+	"type": "module",
+	"scripts": {
+		"test": "node --test"
+	}
+}

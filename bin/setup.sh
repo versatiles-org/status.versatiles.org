@@ -18,7 +18,7 @@ fi
 
 ensure_secrets
 
-mkdir -p ./volumes/gatus-data ./volumes/certbot-www ./volumes/certbot-cert ./volumes/nginx-cert ./volumes/login ./volumes/dashboard ./volumes/webhook
+mkdir -p ./volumes/gatus-data ./volumes/certbot-www ./volumes/certbot-cert ./volumes/nginx-cert ./volumes/login ./volumes/dashboard ./volumes/dependency-status ./volumes/webhook/now ./volumes/webhook/batched
 
 # nginx needs some certificate to start, and must be running for certbot.
 ./bin/cert/create_dummy.sh
@@ -36,6 +36,9 @@ wait_for_healthy nginx
 # on GitHub first, so a failure here only warns.
 ./bin/dashboard/setup.sh
 ./bin/dashboard/update.sh || echo "Warning: the dashboard could not be generated. Is the deploy key added to the repo?"
+# Optional too (GITHUB_APP_CLIENT_ID in .env). It rebuilds the dashboard when done.
+./bin/dependency-status/setup.sh
+./bin/dependency-status/update.sh --if-due || echo "Warning: the dependency status could not be generated. See README.md."
 ./bin/webhook/setup.sh
 ./bin/verify.sh
 
