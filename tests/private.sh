@@ -90,6 +90,9 @@ for entry in /private/:home /private/dashboard/:dashboard /private/dependency-st
 		fail "$path doesn't have the bar exactly once."
 	elif ! grep -q "data-section=\"$section\"" <<<"$page"; then
 		fail "$path doesn't mark its own link ($section) in the bar."
+	elif grep -o '<div class="vt-bar".*</form></div>' <<<"$page" | grep -o '<a [^>]*>' | grep -qv 'target="_self"'; then
+		# Without it, VitePress' router takes over the link and nothing happens.
+		fail "$path has a link in the bar without target=\"_self\"."
 	else
 		echo "  ok: $path has the bar, with $section marked."
 	fi
