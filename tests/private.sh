@@ -26,8 +26,10 @@ cleanup() {
 	docker rm -f "$NGINX" "$LOGIN" >/dev/null 2>&1 || true
 	docker network rm "$NET" >/dev/null 2>&1 || true
 	rm -f "$TMP"/ssl/fullchain.pem "$TMP"/ssl/privkey.pem "$TMP"/login/users "$TMP"/cookies \
-		"$TMP"/dashboard/index.html "$TMP"/dependency-status/site/index.html
-	rmdir "$TMP"/ssl "$TMP"/login "$TMP"/dashboard "$TMP"/dependency-status/site \
+		"$TMP"/dashboard/index.html "$TMP"/dependency-status/site/index.html \
+		"$TMP"/dependency-status/site/issues/index.html
+	rmdir "$TMP"/ssl "$TMP"/login "$TMP"/dashboard "$TMP"/dependency-status/site/issues \
+		"$TMP"/dependency-status/site \
 		"$TMP"/dependency-status "$TMP" 2>/dev/null || true
 }
 trap cleanup EXIT
@@ -46,13 +48,15 @@ else
 	fail "$locations /private/ locations in nginx.conf, but $includes include private.conf."
 fi
 
-mkdir -p "$TMP/ssl" "$TMP/login" "$TMP/dashboard" "$TMP/dependency-status/site"
+mkdir -p "$TMP/ssl" "$TMP/login" "$TMP/dashboard" "$TMP/dependency-status/site/issues"
 openssl req -x509 -newkey rsa:2048 -nodes -subj /CN=test -days 1 \
 	-keyout "$TMP/ssl/privkey.pem" -out "$TMP/ssl/fullchain.pem" 2>/dev/null
 printf '<!doctype html><html><head><title>Dashboard</title></head><body><main>Dashboard</main></body></html>\n' \
 	>"$TMP/dashboard/index.html"
 printf '<!doctype html><html><head><title>Status</title></head><body><div id="app">Status</div></body></html>\n' \
 	>"$TMP/dependency-status/site/index.html"
+printf '<!doctype html><html><head><title>Issues</title></head><body><div id="app">Issues</div></body></html>\n' \
+	>"$TMP/dependency-status/site/issues/index.html"
 
 docker network create "$NET" >/dev/null
 docker run --rm -v "$PWD/login:/app:ro" -v "$TMP/login:/data" -w /app "$NODE_IMAGE" node -e "
@@ -75,7 +79,7 @@ for _ in $(seq 1 30); do
 done
 
 echo "Checking the private area through nginx..."
-for path in /private/ /private/dashboard/ /private/dependency-status/ /private/bar.css; do
+for path in /private/ /private/dashboard/ /private/dependency-status/ /private/dependency-status/issues/ /private/bar.css; do
 	code=$("${CURL[@]}" -o /dev/null -w '%{http_code}' "$BASE$path" || true)
 	[ "$code" = "302" ] || fail "$path answered $code without a session, expected a redirect to the login."
 done
@@ -83,7 +87,8 @@ done
 "${CURL[@]}" -o /dev/null -c "$TMP/cookies" -H "Origin: https://status.versatiles.org" \
 	--data-urlencode name=tester --data-urlencode "password=$PASSWORD" "$BASE/login"
 
-for entry in /private/:home /private/dashboard/:dashboard /private/dependency-status/:dependencies; do
+for entry in /private/:home /private/dashboard/:dashboard /private/dependency-status/:dependencies \
+	/private/dependency-status/issues/:issues; do
 	path=${entry%:*} section=${entry##*:}
 	page=$("${CURL[@]}" -b "$TMP/cookies" "$BASE$path" || true)
 	if [ "$(grep -o 'class="vt-bar"' <<<"$page" | wc -l | tr -d ' ')" != "1" ]; then
