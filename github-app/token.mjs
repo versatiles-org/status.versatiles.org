@@ -15,15 +15,29 @@ import { pathToFileURL } from 'node:url';
 const API = 'https://api.github.com';
 
 // What the collector reads. The token gets these and nothing else, whatever
-// the app may be granted later.
+// the app may be granted later. security_events (code scanning alerts) and
+// vulnerability_alerts (Dependabot alerts) feed the security alerts, which are
+// only served behind the login.
 export const PERMISSIONS = {
 	checks: 'read',
 	contents: 'read',
 	issues: 'read',
 	metadata: 'read',
 	pull_requests: 'read',
+	security_events: 'read',
 	statuses: 'read',
+	vulnerability_alerts: 'read',
 };
+
+/**
+ * PERMISSIONS, less those the installation hasn't been granted: GitHub refuses
+ * a token that asks for more. A permission added here before it is granted on
+ * GitHub then only leaves out what needs it, not the whole status.
+ */
+export function grantedPermissions(installation) {
+	const granted = installation.permissions ?? {};
+	return Object.fromEntries(Object.entries(PERMISSIONS).filter(([name]) => granted[name] === 'read' || granted[name] === 'write'));
+}
 
 const base64url = (data) => Buffer.from(data).toString('base64url');
 
@@ -56,7 +70,7 @@ export async function installationToken({ clientId, privateKey, org, fetchImpl =
 	const jwt = appJwt(clientId, privateKey, now);
 	const installation = await call(fetchImpl, 'GET', `/orgs/${org}/installation`, jwt);
 	const answer = await call(fetchImpl, 'POST', `/app/installations/${installation.id}/access_tokens`, jwt, {
-		permissions: PERMISSIONS,
+		permissions: grantedPermissions(installation),
 	});
 	return answer.token;
 }

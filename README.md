@@ -55,7 +55,7 @@ The configuration of both Gatus and nginx reaches the containers through directo
 
 One webhook for the whole organisation (its settings → Webhooks), with payload URL `https://status.versatiles.org/webhook`, content type `application/json`, the secret from `WEBHOOK_SECRET` in `.env`, and the events Pushes, Releases, Issues, Pull requests, Repositories and Workflow runs. The receiver decides what each event triggers. GitHub's first delivery is a ping, which should get a green check under "Recent Deliveries".
 
-For the dependency status, a GitHub App of the organisation, installed on all repositories, without webhook, with read-only access to Checks, Commit statuses, Contents, Issues, Metadata and Pull requests. Its Client ID goes into `.env` as `GITHUB_APP_CLIENT_ID`, its private key to `volumes/github-app/private-key.pem` (`chmod 600`). Keep a copy of the key with the `.env` copy.
+For the dependency status, a GitHub App of the organisation, installed on all repositories, without webhook, with read-only access to Checks, Code scanning alerts, Commit statuses, Contents, Dependabot alerts, Issues, Metadata and Pull requests. The two alert permissions feed the security alerts behind the login; the token asks only for what the app was granted, so without them only the alerts are missing. Its Client ID goes into `.env` as `GITHUB_APP_CLIENT_ID`, its private key to `volumes/github-app/private-key.pem` (`chmod 600`). Keep a copy of the key with the `.env` copy.
 
 `.env` holds the secrets and is not committed. Keep a copy in the password manager, so a rebuilt server can be set up again.
 

@@ -4,7 +4,7 @@
 import assert from 'node:assert/strict';
 import { createVerify, generateKeyPairSync } from 'node:crypto';
 import { describe, test } from 'node:test';
-import { appJwt, installationToken, PERMISSIONS } from './token.mjs';
+import { appJwt, grantedPermissions, installationToken, PERMISSIONS } from './token.mjs';
 
 const { privateKey, publicKey } = generateKeyPairSync('rsa', {
 	modulusLength: 2048,
@@ -29,6 +29,14 @@ describe('appJwt', () => {
 	});
 });
 
+describe('grantedPermissions', () => {
+	test('keeps what was granted, read or write, and drops the rest', () => {
+		const granted = grantedPermissions({ permissions: { checks: 'read', issues: 'write', vulnerability_alerts: 'none' } });
+		assert.deepEqual(granted, { checks: 'read', issues: 'read' });
+		assert.deepEqual(grantedPermissions({}), {});
+	});
+});
+
 describe('installationToken', () => {
 	function fakeGitHub(answers) {
 		const calls = [];
@@ -42,7 +50,7 @@ describe('installationToken', () => {
 
 	test('finds the installation and asks for a read-only token', async () => {
 		const { calls, fetchImpl } = fakeGitHub([
-			[200, { id: 42 }],
+			[200, { id: 42, permissions: { ...PERMISSIONS, administration: 'write' } }],
 			[201, { token: 'ghs_test' }],
 		]);
 		const token = await installationToken({ clientId: 'Iv23test', privateKey, org: 'example', fetchImpl });
@@ -53,6 +61,15 @@ describe('installationToken', () => {
 		assert.deepEqual(calls[1].body, { permissions: PERMISSIONS });
 		assert.ok(Object.values(calls[1].body.permissions).every((level) => level === 'read'));
 		assert.match(calls[0].headers.Authorization, /^Bearer [\w-]+\.[\w-]+\.[\w-]+$/);
+	});
+
+	test('asks only for what the installation was granted', async () => {
+		const { calls, fetchImpl } = fakeGitHub([
+			[200, { id: 42, permissions: { contents: 'read', metadata: 'read', administration: 'write' } }],
+			[201, { token: 'ghs_test' }],
+		]);
+		await installationToken({ clientId: 'Iv23test', privateKey, org: 'example', fetchImpl });
+		assert.deepEqual(calls[1].body, { permissions: { contents: 'read', metadata: 'read' } });
 	});
 
 	test('fails with GitHub\'s answer', async () => {
