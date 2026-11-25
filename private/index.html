@@ -19,44 +19,131 @@
 				color: #ccc;
 				font: 16px/1.5 system-ui, sans-serif;
 			}
-			/* No padding on body: the bar nginx adds at the top spans the page. */
+			/*
+			 * No padding on body: the bar nginx adds at the top spans the page. It is
+			 * inserted into this page, so every rule below is scoped to main.
+			 */
 			main {
-				max-width: 720px;
+				box-sizing: border-box;
+				display: grid;
+				grid-template-columns: repeat(3, 1fr);
+				align-content: center;
+				gap: 20px;
+				max-width: 960px;
+				min-height: calc(100vh - 40px);
 				margin: 0 auto;
 				padding: 32px 16px;
 			}
-			header {
+			/* The page's name is in the title and the bar; this is for screen readers. */
+			main h1 {
+				position: absolute;
+				width: 1px;
+				height: 1px;
+				overflow: hidden;
+				clip-path: inset(50%);
+			}
+			main a {
 				display: flex;
+				flex-direction: column;
 				align-items: center;
-				gap: 12px;
-			}
-			header img {
-				width: 40px;
-				height: 40px;
-			}
-			h1 {
-				flex: 1;
-				margin: 0;
-				font-size: 24px;
-				color: #fff;
-			}
-			a {
+				gap: 8px;
+				padding: 40px 24px 32px;
 				color: inherit;
+				text-align: center;
+				text-decoration: none;
+				background: #232328;
+				border: 1px solid #2f2f36;
+				border-radius: 12px;
+				transition:
+					border-color 0.15s,
+					background 0.15s;
+			}
+			main a:hover,
+			main a:focus-visible {
+				background: #2a2a31;
+				border-color: #9d35ff;
+				outline: none;
+			}
+			main svg {
+				flex: none;
+				width: 64px;
+				height: 64px;
+				margin-bottom: 8px;
+				color: #b26bff;
+				fill: none;
+				stroke: currentColor;
+				stroke-width: 1.5;
+				stroke-linecap: round;
+				stroke-linejoin: round;
+			}
+			main a > div {
+				display: flex;
+				flex-direction: column;
+				gap: 4px;
+			}
+			main strong {
+				color: #fff;
+				font-size: 20px;
+			}
+			main span {
+				font-size: 14px;
+				color: #999;
+			}
+			@media (max-width: 720px) {
+				main {
+					grid-template-columns: 1fr;
+					align-content: start;
+				}
+				main a {
+					flex-direction: row;
+					text-align: left;
+					padding: 20px;
+				}
+				main svg {
+					width: 40px;
+					height: 40px;
+					margin: 0 8px 0 0;
+				}
 			}
 		</style>
 	</head>
 	<body>
 		<main>
-			<header>
-				<img src="https://versatiles.org/assets/logo/versatiles.svg" alt="" />
-				<h1>Maintainer area</h1>
-			</header>
-			<ul>
-				<li><a href="/private/dashboard/">Dashboard</a>: what's urgent, what's important, and the state of every repo.</li>
-				<li><a href="/private/dependency-status/">Dependency status</a>: outdated dependencies in the order to update them, pinned versions, deployments, and what is open and unreleased in every repo.</li>
-				<li><a href="/private/dependency-status/issues/">Issues and pull requests</a>: who outside is waiting for an answer, stuck pull requests, which issues block others, fixes not yet released, and the backlog of every repo.</li>
-				<li><a href="/">Public status page</a></li>
-			</ul>
+			<h1>Maintainer area</h1>
+			<a href="/private/dashboard/">
+				<svg viewBox="0 0 24 24" aria-hidden="true">
+					<rect x="3" y="3" width="7" height="9" rx="1" />
+					<rect x="14" y="3" width="7" height="5" rx="1" />
+					<rect x="14" y="12" width="7" height="9" rx="1" />
+					<rect x="3" y="16" width="7" height="5" rx="1" />
+				</svg>
+				<div>
+					<strong>Dashboard</strong>
+					<span>What's urgent, what's important, every repo</span>
+				</div>
+			</a>
+			<a href="/private/dependency-status/">
+				<svg viewBox="0 0 24 24" aria-hidden="true">
+					<rect x="9" y="2" width="6" height="6" rx="1" />
+					<rect x="2" y="16" width="6" height="6" rx="1" />
+					<rect x="16" y="16" width="6" height="6" rx="1" />
+					<path d="M12 8v4M5 16v-3a1 1 0 0 1 1-1h12a1 1 0 0 1 1 1v3" />
+				</svg>
+				<div>
+					<strong>Dependencies</strong>
+					<span>Outdated, pinned and unreleased</span>
+				</div>
+			</a>
+			<a href="/private/dependency-status/issues/">
+				<svg viewBox="0 0 24 24" aria-hidden="true">
+					<circle cx="12" cy="12" r="9" />
+					<circle cx="12" cy="12" r="1.5" fill="currentColor" />
+				</svg>
+				<div>
+					<strong>Issues</strong>
+					<span>Issues and pull requests waiting for us</span>
+				</div>
+			</a>
 		</main>
 	</body>
 </html>
