@@ -39,7 +39,7 @@ services:
   login:
     container_name: login
     logging: *logging
-    image: node:24.22.2-alpine
+    image: node:26.13.1-alpine
     restart: always
     networks: [docker_network]
     expose: [8080]
