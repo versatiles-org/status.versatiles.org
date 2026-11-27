@@ -1,0 +1,28 @@
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: "chore(deps)"
+    groups:
+      all-github-actions:
+        patterns:
+          - "*"
+      security:
+        applies-to: security-updates
+        patterns:
+          - "*"
+
+  # Image tags in compose.yaml (nginx, Gatus, Node, certbot). Not grouped: each
+  # image gets a pull request of its own that CI tests and that can be merged
+  # or left open independently. A merge deploys through the webhook. New nginx
+  # images under the same tag don't wait for this: bin/nginx/update.sh rolls
+  # them out daily.
+  - package-ecosystem: docker-compose
+    directory: /
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: "chore(deps)"

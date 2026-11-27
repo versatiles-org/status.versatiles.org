@@ -58,7 +58,7 @@ One webhook for the whole organisation (its settings → Webhooks), with payload
 
 For the dependency status, a GitHub App of the organisation, installed on all repositories, without webhook, with read-only access to Checks, Code scanning alerts, Commit statuses, Contents, Dependabot alerts, Issues, Metadata and Pull requests. The two alert permissions feed the security alerts behind the login; the token asks only for what the app was granted, so without them only the alerts are missing. Its Client ID goes into `.env` as `GITHUB_APP_CLIENT_ID`, its private key to `volumes/github-app/private-key.pem` (`chmod 600`). Keep a copy of the key with the `.env` copy.
 
-For the reports, copy each server's token from `.env` (`REPORT_TOKEN_TILES`, `REPORT_TOKEN_GEOCODE`, `REPORT_TOKEN_STATUS`) into that server's `.env`. A cron job reports after each run:
+For the reports, copy each other server's token from `.env` (`REPORT_TOKEN_TILES`, `REPORT_TOKEN_GEOCODE`) into that server's `.env` as `REPORT_TOKEN`. This server's own token is `REPORT_TOKEN` already; the login service gets it as `REPORT_TOKEN_STATUS`. The servers' cron jobs report through `bin/cron/run.sh`, the same script on every server; by hand, a report looks like this:
 
 ```sh
 curl -sf --max-time 10 --retry 3 -X POST https://status.versatiles.org/report \
@@ -82,7 +82,18 @@ The status server can't report its own outage. Add an external uptime monitor (f
 tests/login.sh     # test the login service, the webhook and the reports (needs docker)
 tests/github-app.sh  # test the GitHub App token script (needs docker)
 tests/private.sh   # test the private area through nginx: login and the shared bar on every area (needs docker)
+tests/nginx-config.sh  # load the nginx config with nginx -t in the pinned image (needs docker)
+tests/nginx-version.sh # test bin/nginx/check_version.sh
+tests/cron-run.sh  # test bin/cron/run.sh (needs python3)
 tests/config.sh    # start Gatus locally with the config, run the push checks against it, print the results (needs docker and jq)
 ```
 
 To change a check, edit `gatus/config.yaml`, run `tests/config.sh`, commit and push. Once CI passes, the webhook updates the server; without the webhook, run `bin/update.sh` there.
+
+## Keeping the images up to date
+
+nginx faces the internet, and fixes for it reach the official image the day nginx releases them. So a daily cron job (4:30, set up by `bin/setup.sh` and `bin/update.sh`) runs `bin/nginx/update.sh`, the same procedure as on tiles.versatiles.org and geocode.versatiles.org. It pulls the nginx image and does nothing else unless a newer one arrived under the same tag. Then it checks that the config loads in the new image (`tests/nginx-config.sh`), recreates nginx (about 3 seconds of refused connections) and checks that it is healthy and answers HTTPS. If the config does not load, nginx keeps the previous image; if the new one does not work, nginx is recreated from the previous one. It never touches the other services, and it waits while `bin/update.sh` runs.
+
+Afterwards `bin/nginx/check_version.sh` compares the running nginx with nginx's releases and fails when a newer release of the same line has been out for more than 2 days, or when the line is no longer one nginx.org maintains: then move the nginx tag in `compose.yaml` to a maintained line. The run is reported to the private dashboard (`bin/cron/run.sh`, with this server's `REPORT_TOKEN`); its log is `/var/log/nginx-update.log`.
+
+The other images (Gatus, Node, certbot) are updated by pushes: Dependabot proposes new versions every week (`.github/dependabot.yml`), and `bin/update.sh` pulls them when it deploys. `.github/workflows/scan-images.yml` scans the images in `compose.yaml` for known vulnerabilities every Monday; the findings are under Security → Code scanning, not visible without a login.

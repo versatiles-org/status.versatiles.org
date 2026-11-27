@@ -68,5 +68,6 @@ fi
 ./bin/dependency-status/setup.sh
 ./bin/dependency-status/update.sh --if-due || echo "Warning: the dependency status could not be generated. See README.md."
 ./bin/webhook/setup.sh
+./bin/nginx/setup_auto_update.sh
 ./bin/verify.sh
 echo "Update completed."

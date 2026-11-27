@@ -60,10 +60,11 @@ services:
       - UPDATE_REPO=${UPDATE_REPO:-}
       - QUEUE_DIR=/queue
       # The servers' cron job reports, see login/report.js: one token per
-      # server, generated like the secrets above.
+      # server, generated like the secrets above. This server's own token is
+      # REPORT_TOKEN in .env, the name bin/cron/run.sh reads on every server.
       - REPORT_TOKEN_TILES=${REPORT_TOKEN_TILES:-}
       - REPORT_TOKEN_GEOCODE=${REPORT_TOKEN_GEOCODE:-}
-      - REPORT_TOKEN_STATUS=${REPORT_TOKEN_STATUS:-}
+      - REPORT_TOKEN_STATUS=${REPORT_TOKEN:-}
       - REPORTS_DIR=/reports
     volumes:
       - ./login/:/app/:ro

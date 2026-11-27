@@ -21,7 +21,7 @@ jobs:
         uses: actions/checkout@v7
 
       - name: Lint shell scripts
-        run: shellcheck -x bin/*.sh bin/cert/*.sh bin/push/*.sh bin/dashboard/*.sh bin/webhook/*.sh bin/dependency-status/*.sh tests/*.sh
+        run: shellcheck -x bin/*.sh bin/cert/*.sh bin/push/*.sh bin/dashboard/*.sh bin/webhook/*.sh bin/dependency-status/*.sh bin/nginx/*.sh bin/cron/*.sh tests/*.sh
 
       - name: Validate compose.yaml
         run: docker compose config --quiet
@@ -37,3 +37,13 @@ jobs:
 
       - name: Test the private area through nginx
         run: tests/private.sh
+
+      # The check bin/nginx/update.sh runs before it rolls out a new image.
+      - name: Load the nginx config in the pinned image
+        run: tests/nginx-config.sh
+
+      - name: Test the nginx version check
+        run: tests/nginx-version.sh
+
+      - name: Test the cron job reports
+        run: tests/cron-run.sh

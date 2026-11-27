@@ -40,6 +40,7 @@ wait_for_healthy nginx
 ./bin/dependency-status/setup.sh
 ./bin/dependency-status/update.sh --if-due || echo "Warning: the dependency status could not be generated. See README.md."
 ./bin/webhook/setup.sh
+./bin/nginx/setup_auto_update.sh
 ./bin/verify.sh
 
 echo "Setup completed. Add a user for the private area with: ./bin/user.sh add <name>"
