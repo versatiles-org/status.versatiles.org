@@ -66,13 +66,14 @@ function validSignature(secret, body, given) {
 	return expected.length === actual.length && timingSafeEqual(expected, actual);
 }
 
-function readRawBody(req) {
+/** The request body as a Buffer. Rejects with status 413 beyond maxBytes. Also used by report.js. */
+export function readRawBody(req, maxBytes) {
 	return new Promise((resolve, reject) => {
 		const chunks = [];
 		let size = 0;
 		req.on('data', (chunk) => {
 			size += chunk.length;
-			if (size > MAX_WEBHOOK_BYTES) {
+			if (size > maxBytes) {
 				reject(Object.assign(new Error('body too large'), { status: 413 }));
 				req.destroy();
 				return;
@@ -133,7 +134,7 @@ export function createWebhookHandler({ secret, queueDir, dashboardRepo, updateRe
 
 		let body;
 		try {
-			body = await readRawBody(req);
+			body = await readRawBody(req, MAX_WEBHOOK_BYTES);
 		} catch (error) {
 			if (error.status === 413) return res.writeHead(413).end();
 			throw error;

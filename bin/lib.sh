@@ -17,8 +17,9 @@ load_env() {
 # Adds a random value for the variable $1 to .env if it has none, and exports
 # it. Used for the generated secrets: GATUS_PUSH_TOKEN (bin/push/checks.sh
 # reports to Gatus with it), LOGIN_SECRET (signs the sessions of the private
-# area) and WEBHOOK_SECRET (GitHub signs its webhook deliveries with it). Run
-# before `docker compose up`, so the containers get them.
+# area), WEBHOOK_SECRET (GitHub signs its webhook deliveries with it) and one
+# REPORT_TOKEN_<SERVER> per server that reports its cron jobs (login/report.js).
+# Run before `docker compose up`, so the containers get them.
 ensure_secret() {
 	local name=$1 value
 	if [ -n "${!name:-}" ]; then
@@ -41,6 +42,9 @@ ensure_secrets() {
 	ensure_secret GATUS_PUSH_TOKEN
 	ensure_secret LOGIN_SECRET
 	ensure_secret WEBHOOK_SECRET
+	ensure_secret REPORT_TOKEN_TILES
+	ensure_secret REPORT_TOKEN_GEOCODE
+	ensure_secret REPORT_TOKEN_STATUS
 }
 
 # True if the compose service is running.

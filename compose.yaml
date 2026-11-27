@@ -59,12 +59,20 @@ services:
       - DASHBOARD_REPO=${DASHBOARD_REPO:-}
       - UPDATE_REPO=${UPDATE_REPO:-}
       - QUEUE_DIR=/queue
+      # The servers' cron job reports, see login/report.js: one token per
+      # server, generated like the secrets above.
+      - REPORT_TOKEN_TILES=${REPORT_TOKEN_TILES:-}
+      - REPORT_TOKEN_GEOCODE=${REPORT_TOKEN_GEOCODE:-}
+      - REPORT_TOKEN_STATUS=${REPORT_TOKEN_STATUS:-}
+      - REPORTS_DIR=/reports
     volumes:
       - ./login/:/app/:ro
       # The users file, managed with bin/user.sh.
       - ./volumes/login/:/data/:rw
       # Jobs queued by the webhook, run on the host by bin/webhook/run.sh.
       - ./volumes/webhook/:/queue/:rw
+      # The latest report per server and job, for the private dashboard.
+      - ./volumes/reports/:/reports/:rw
     healthcheck:
       test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/health"]
       interval: 30s

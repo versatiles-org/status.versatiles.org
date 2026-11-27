@@ -3,8 +3,9 @@
 // nginx asks GET /auth about every request to /private/ (auth_request): 204 lets
 // it through, 401 sends the visitor to /login. The service also serves the
 // login page and handles POST /login and POST /logout. It also receives the
-// GitHub webhook at POST /webhook, see webhook.js. Nothing else is exposed;
-// nginx only forwards these paths.
+// GitHub webhook at POST /webhook, see webhook.js, and the servers' cron job
+// reports at POST /report, see report.js. Nothing else is exposed; nginx only
+// forwards these paths.
 //
 // A session is a cookie `name:expires:signature`, signed with LOGIN_SECRET
 // (HMAC-SHA256) over the name, the expiry and the user's password hash. So it
@@ -16,6 +17,7 @@ import { createHmac, timingSafeEqual } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import http from 'node:http';
 import { pathToFileURL } from 'node:url';
+import { createReportHandler, tokensFromEnv } from './report.js';
 import { hashPassword, readUsers, verifyPassword } from './users.js';
 import { createWebhookHandler } from './webhook.js';
 
@@ -58,13 +60,14 @@ function readBody(req) {
 	});
 }
 
-export function createLoginServer({ usersFile, secret, webhook = {}, now = () => Date.now() }) {
+export function createLoginServer({ usersFile, secret, webhook = {}, report = {}, now = () => Date.now() }) {
 	if (!secret || secret.length < 32) throw new Error('LOGIN_SECRET must have at least 32 characters.');
 
 	// Checked against when a user doesn't exist, so a login takes as long for
 	// unknown names as for known ones and doesn't reveal which names exist.
 	const dummy = hashPassword('dummy', 'dummy password for timing');
 	const handleWebhook = createWebhookHandler({ ...webhook, now });
+	const handleReport = createReportHandler({ ...report, now });
 
 	function sign(name, expires, user) {
 		return createHmac('sha256', secret).update(`${name}\n${expires}\n${user.hash}`).digest('base64url');
@@ -155,6 +158,10 @@ export function createLoginServer({ usersFile, secret, webhook = {}, now = () =>
 			return handleWebhook(req, res);
 		}
 
+		if (req.method === 'POST' && url.pathname === '/report') {
+			return handleReport(req, res);
+		}
+
 		if (req.method === 'POST' && url.pathname === '/logout') {
 			if (!sameOrigin(req)) return res.writeHead(403).end();
 			return redirect(res, '/login', `${COOKIE_NAME}=; Path=/; Max-Age=0; HttpOnly; Secure; SameSite=Lax`);
@@ -181,6 +188,10 @@ if (import.meta.url === pathToFileURL(process.argv[1]).href) {
 			queueDir: process.env.QUEUE_DIR ?? '/queue',
 			dashboardRepo: process.env.DASHBOARD_REPO,
 			updateRepo: process.env.UPDATE_REPO,
+		},
+		report: {
+			tokens: tokensFromEnv(process.env),
+			reportsDir: process.env.REPORTS_DIR ?? '/reports',
 		},
 	});
 	server.listen(8080, () => console.log('Login service listening on port 8080.'));

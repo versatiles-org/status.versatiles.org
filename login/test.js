@@ -7,6 +7,7 @@ import { join } from 'node:path';
 import { after, before, describe, test } from 'node:test';
 import { COOKIE_NAME, createLoginServer, safeNext } from './server.js';
 import { hashPassword, readUsers, writeUsers } from './users.js';
+import { MAX_REPORT_BYTES, tokensFromEnv, validateReport } from './report.js';
 import { jobsFor, MAX_WEBHOOK_BYTES, repoName, signature } from './webhook.js';
 
 const PASSWORD = 'correct horse battery';
@@ -408,6 +409,132 @@ describe('webhook', () => {
 			} finally {
 				server.close();
 			}
+		});
+	});
+});
+
+describe('report', () => {
+	const TILES_TOKEN = 't'.repeat(64);
+	const GEOCODE_TOKEN = 'g'.repeat(64);
+	let reportBase;
+	let reportServer;
+	let reportsDir;
+
+	before(async () => {
+		reportsDir = mkdtempSync(join(tmpdir(), 'report-test-'));
+		reportServer = createLoginServer({
+			usersFile,
+			secret: SECRET,
+			report: { tokens: { tiles: TILES_TOKEN, geocode: GEOCODE_TOKEN }, reportsDir },
+			now: () => clock,
+		});
+		await new Promise((resolve) => reportServer.listen(0, '127.0.0.1', resolve));
+		reportBase = `http://127.0.0.1:${reportServer.address().port}`;
+	});
+
+	after(() => reportServer.close());
+
+	const REPORT = { job: 'nginx-update', exit_code: 0, interval: 86400, message: 'up to date', details: { nginx: '1.31.10' } };
+
+	function send(report, { token = TILES_TOKEN } = {}) {
+		const body = typeof report === 'string' ? report : JSON.stringify(report);
+		const headers = { 'Content-Type': 'application/json' };
+		if (token) headers.Authorization = `Bearer ${token}`;
+		return fetch(`${reportBase}/report`, { method: 'POST', headers, body });
+	}
+
+	const stored = (server, job) => join(reportsDir, server, `${job}.json`);
+
+	test('does not exist without tokens', async () => {
+		assert.equal((await fetch(`${base}/report`, { method: 'POST', body: '{}' })).status, 404);
+	});
+
+	test('rejects a missing or unknown token', async () => {
+		assert.equal((await send(REPORT, { token: false })).status, 401);
+		assert.equal((await send(REPORT, { token: 'x'.repeat(64) })).status, 401);
+		assert.equal(existsSync(join(reportsDir, 'tiles')), false);
+	});
+
+	test('stores a report under the server the token belongs to', async () => {
+		assert.equal((await send(REPORT)).status, 204);
+		const report = JSON.parse(readFileSync(stored('tiles', 'nginx-update'), 'utf8'));
+		assert.deepEqual(report, { server: 'tiles', ...REPORT, received: new Date(clock).toISOString() });
+		assert.equal(existsSync(stored('tiles', 'nginx-update') + '.tmp'), false);
+	});
+
+	test("a server can't report for another one", async () => {
+		// The body can't name the server: it's taken from the token alone.
+		assert.equal((await send({ ...REPORT, server: 'geocode' }, { token: TILES_TOKEN })).status, 204);
+		assert.equal(existsSync(stored('geocode', 'nginx-update')), false);
+		assert.equal((await send(REPORT, { token: GEOCODE_TOKEN })).status, 204);
+		assert.equal(JSON.parse(readFileSync(stored('geocode', 'nginx-update'), 'utf8')).server, 'geocode');
+	});
+
+	test('the newest report replaces the previous one', async () => {
+		assert.equal((await send({ ...REPORT, exit_code: 1, message: 'rolled back' })).status, 204);
+		const report = JSON.parse(readFileSync(stored('tiles', 'nginx-update'), 'utf8'));
+		assert.equal(report.exit_code, 1);
+		assert.equal(report.message, 'rolled back');
+	});
+
+	test('rejects invalid reports with the reason', async () => {
+		const response = await send({ ...REPORT, job: '../etc' });
+		assert.equal(response.status, 400);
+		assert.match(await response.text(), /^job:/);
+		assert.equal((await send('not json')).status, 400);
+		assert.equal(existsSync(join(reportsDir, 'etc.json')), false);
+	});
+
+	test('rejects a body over the limit', async () => {
+		const response = await send({ ...REPORT, job: 'too-large', message: 'x'.repeat(MAX_REPORT_BYTES) }).catch(
+			(error) => error,
+		);
+		// The server may close the connection before fetch has sent everything.
+		assert.ok(response instanceof Error || response.status === 413);
+		assert.equal(existsSync(stored('tiles', 'too-large')), false);
+	});
+
+	describe('validateReport', () => {
+		test('accepts a minimal report and fills in the defaults', () => {
+			assert.deepEqual(validateReport({ job: 'cert-renew', exit_code: 0, interval: 604800 }), {
+				job: 'cert-renew',
+				exit_code: 0,
+				interval: 604800,
+				message: '',
+				details: {},
+			});
+		});
+
+		test('drops fields it does not know', () => {
+			assert.equal('received' in validateReport({ ...REPORT, received: '2000-01-01' }), false);
+		});
+
+		for (const [name, change] of [
+			['an array', []],
+			['a job with a slash', { job: 'a/b' }],
+			['a job with upper case', { job: 'Nginx' }],
+			['a missing exit code', { exit_code: undefined }],
+			['an exit code out of range', { exit_code: 256 }],
+			['a fractional exit code', { exit_code: 0.5 }],
+			['a too short interval', { interval: 59 }],
+			['a too long interval', { interval: 62 * 24 * 60 * 60 + 1 }],
+			['a too long message', { message: 'x'.repeat(501) }],
+			['details as an array', { details: [] }],
+			['a nested detail', { details: { a: {} } }],
+			['a detail key with upper case', { details: { Nginx: '1' } }],
+			['a too long detail', { details: { a: 'x'.repeat(201) } }],
+			['too many details', { details: Object.fromEntries([...Array(21).keys()].map((i) => [`k${i}`, i])) }],
+		]) {
+			test(`rejects ${name}`, () => {
+				const report = Array.isArray(change) ? change : { ...REPORT, ...change };
+				assert.equal(typeof validateReport(report), 'string');
+			});
+		}
+	});
+
+	test('tokensFromEnv reads REPORT_TOKEN_<SERVER> and skips empty ones', () => {
+		assert.deepEqual(tokensFromEnv({ REPORT_TOKEN_TILES: 'a', REPORT_TOKEN_GEOCODE: '', LOGIN_SECRET: 'b' }), {
+			tiles: 'a',
 		});
 	});
 });

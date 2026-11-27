@@ -5,7 +5,8 @@ set -euo pipefail
 # this repo's configuration and a sample page for each area, then checks that
 # every page is behind the login and gets the shared bar from
 # nginx/private.conf, with its own link marked. Also checks that every
-# /private/ location in nginx.conf uses that file.
+# /private/ location in nginx.conf uses that file, and that nginx passes the
+# servers' reports to the login service (POST /report).
 #
 # Needs docker, curl and openssl. Usage: tests/private.sh
 
@@ -27,10 +28,10 @@ cleanup() {
 	docker network rm "$NET" >/dev/null 2>&1 || true
 	rm -f "$TMP"/ssl/fullchain.pem "$TMP"/ssl/privkey.pem "$TMP"/login/users "$TMP"/cookies \
 		"$TMP"/dashboard/index.html "$TMP"/dependency-status/site/index.html \
-		"$TMP"/dependency-status/site/issues/index.html
+		"$TMP"/dependency-status/site/issues/index.html "$TMP"/reports/tiles/test-job.json
 	rmdir "$TMP"/ssl "$TMP"/login "$TMP"/dashboard "$TMP"/dependency-status/site/issues \
 		"$TMP"/dependency-status/site \
-		"$TMP"/dependency-status "$TMP" 2>/dev/null || true
+		"$TMP"/dependency-status "$TMP"/reports/tiles "$TMP"/reports "$TMP" 2>/dev/null || true
 }
 trap cleanup EXIT
 failed=0
@@ -48,7 +49,10 @@ else
 	fail "$locations /private/ locations in nginx.conf, but $includes include private.conf."
 fi
 
-mkdir -p "$TMP/ssl" "$TMP/login" "$TMP/dashboard" "$TMP/dependency-status/site/issues"
+# reports/tiles is made here, not by the login container: on Linux, a folder
+# the container makes belongs to root, and cleanup couldn't empty it.
+mkdir -p "$TMP/ssl" "$TMP/login" "$TMP/dashboard" "$TMP/dependency-status/site/issues" "$TMP/reports/tiles"
+REPORT_TOKEN=$(openssl rand -hex 32)
 openssl req -x509 -newkey rsa:2048 -nodes -subj /CN=test -days 1 \
 	-keyout "$TMP/ssl/privkey.pem" -out "$TMP/ssl/fullchain.pem" 2>/dev/null
 printf '<!doctype html><html><head><title>Dashboard</title></head><body><main>Dashboard</main></body></html>\n' \
@@ -64,8 +68,9 @@ docker run --rm -v "$PWD/login:/app:ro" -v "$TMP/login:/data" -w /app "$NODE_IMA
 		u.writeUsers('/data/users', new Map([['tester', await u.hashPassword('tester', process.argv[1])]]));
 	});" "$PASSWORD"
 docker run -d --name "$LOGIN" --network "$NET" --network-alias login \
-	-v "$PWD/login:/app:ro" -v "$TMP/login:/data" -w /app \
+	-v "$PWD/login:/app:ro" -v "$TMP/login:/data" -v "$TMP/reports:/reports" -w /app \
 	-e LOGIN_SECRET="$(openssl rand -hex 32)" -e USERS_FILE=/data/users \
+	-e REPORT_TOKEN_TILES="$REPORT_TOKEN" -e REPORTS_DIR=/reports \
 	"$NODE_IMAGE" node server.js >/dev/null
 docker run -d --name "$NGINX" --network "$NET" -p "127.0.0.1:$PORT:443" \
 	-v "$PWD/nginx/nginx.stub.conf:/etc/nginx/nginx.conf:ro" -v "$PWD/nginx:/etc/nginx/repo:ro" \
@@ -109,6 +114,24 @@ if [ "$type" = "200 text/css" ]; then
 else
 	fail "/private/bar.css answered '$type', expected '200 text/css'."
 fi
+
+# The cron job reports: nginx passes them to the login service, which stores
+# them; login/test.js tests the details.
+echo "Checking the reports through nginx..."
+report() {
+	"${CURL[@]}" -o /dev/null -w '%{http_code}' -X POST -H 'Content-Type: application/json' "$@" "$BASE/report" || true
+}
+REPORT='{"job": "test-job", "exit_code": 0, "interval": 86400}'
+code=$(report -d "$REPORT")
+[ "$code" = "401" ] || fail "/report answered $code without a token, expected 401."
+code=$(report -H "Authorization: Bearer $REPORT_TOKEN" -d "$REPORT")
+if [ "$code" = "204" ] && grep -q '"server": "tiles"' "$TMP/reports/tiles/test-job.json" 2>/dev/null; then
+	echo "  ok: a report with a valid token is stored."
+else
+	fail "/report answered $code with a valid token, expected 204 and a stored report."
+fi
+code=$(report -H "Authorization: Bearer $REPORT_TOKEN" -d "$(printf '{"message": "%s"}' "$(printf '%11000s' '')")")
+[ "$code" = "413" ] || fail "/report answered $code for a body over 10 kB, expected nginx's 413."
 
 if [ "$failed" -ne 0 ]; then
 	echo "nginx log:"

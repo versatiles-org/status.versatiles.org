@@ -37,6 +37,7 @@ An alert is sent after three failed checks in a row, and again when the check ha
   - **dependency-status** (batched): a push or CI run on the default branch, a release, an issue or pull request opened or closed, or a repo created, renamed or archived, in any public repo of the organisation.
 - **bin/dependency-status/update.sh:** optional. The [dependency status](https://github.com/versatiles-org/dependency-graph) at `/private/dependency-status/`, with its page of issues and pull requests at `/private/dependency-status/issues/`, behind the login. Cron starts it every 10 minutes, and it runs when the webhook queued it or the last run is 6 hours old, so a burst of events leads to one run. It pulls the public dependency-graph repo, gets a read-only token from the GitHub App with [`github-app/token.mjs`](github-app/token.mjs), runs the collector (`npm run sync:deps`) and builds the page alone (`npm run build:status`). Then it rebuilds the dashboard, which takes its repo status from the same data.
 - **bin/push/checks.sh:** the checks Gatus can't run, every 10 minutes by cron on the host. It reports with `GATUS_PUSH_TOKEN`, which `bin/setup.sh` and `bin/update.sh` generate into `.env`.
+- **reports:** the servers' cron jobs report each run to `POST /report` ([`login/report.js`](login/report.js)), for the private dashboard. These reports never go to Gatus or the public page: some of them concern security. Each server has a token of its own (`REPORT_TOKEN_<SERVER>` in `.env`), which also says which server reports, so a token leaked from one server can't report for another. The latest report per server and job is kept in `volumes/reports/<server>/<job>.json`, with the time it arrived.
 
 The configuration of both Gatus and nginx reaches the containers through directory mounts, so `bin/update.sh` applies it without recreating them.
 
@@ -57,6 +58,16 @@ One webhook for the whole organisation (its settings → Webhooks), with payload
 
 For the dependency status, a GitHub App of the organisation, installed on all repositories, without webhook, with read-only access to Checks, Code scanning alerts, Commit statuses, Contents, Dependabot alerts, Issues, Metadata and Pull requests. The two alert permissions feed the security alerts behind the login; the token asks only for what the app was granted, so without them only the alerts are missing. Its Client ID goes into `.env` as `GITHUB_APP_CLIENT_ID`, its private key to `volumes/github-app/private-key.pem` (`chmod 600`). Keep a copy of the key with the `.env` copy.
 
+For the reports, copy each server's token from `.env` (`REPORT_TOKEN_TILES`, `REPORT_TOKEN_GEOCODE`, `REPORT_TOKEN_STATUS`) into that server's `.env`. A cron job reports after each run:
+
+```sh
+curl -sf --max-time 10 --retry 3 -X POST https://status.versatiles.org/report \
+  -H "Authorization: Bearer $REPORT_TOKEN" -H 'Content-Type: application/json' \
+  -d '{"job": "cert-renew", "exit_code": 0, "interval": 604800, "message": "renewed"}'
+```
+
+`job` is lower case letters, digits and `-`; `exit_code` the job's exit code; `interval` the seconds between runs, from which the dashboard sees that a job is overdue. `message` (up to 500 characters) and `details` (up to 20 flat values, such as a version) are optional. The answer is 204 when the report was stored, 400 with the reason when it is invalid, and 401 for a wrong token.
+
 `.env` holds the secrets and is not committed. Keep a copy in the password manager, so a rebuilt server can be set up again.
 
 The status server can't report its own outage. Add an external uptime monitor (for example a free one at UptimeRobot) that checks https://status.versatiles.org/.
@@ -68,7 +79,7 @@ The status server can't report its own outage. Add an external uptime monitor (f
 ./bin/verify.sh    # check that this server serves the page with all endpoints
 ./bin/push/checks.sh  # run the push checks now and print their results
 ./bin/user.sh list    # users of the private area; also add <name>, passwd <name>, remove <name>
-tests/login.sh     # test the login service and the webhook (needs docker)
+tests/login.sh     # test the login service, the webhook and the reports (needs docker)
 tests/github-app.sh  # test the GitHub App token script (needs docker)
 tests/private.sh   # test the private area through nginx: login and the shared bar on every area (needs docker)
 tests/config.sh    # start Gatus locally with the config, run the push checks against it, print the results (needs docker and jq)
