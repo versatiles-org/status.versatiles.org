@@ -55,7 +55,8 @@ mkdir -p "$OUT"
 # since npm ci takes longer than the generation itself.
 run_node() {
 	docker run --rm -e NPM_CONFIG_UPDATE_NOTIFIER=false -v "$PWD/$SRC:/src" -v "$PWD/$OUT:/out" \
-		-v "$PWD/volumes/dependency-status:/status:ro" -w /src "$IMAGE" sh -c "$1"
+		-v "$PWD/volumes/dependency-status:/status:ro" -v "$PWD/volumes/reports:/reports:ro" \
+		-w /src "$IMAGE" sh -c "$1"
 }
 if [ "$changed" = "true" ] || [ ! -d "$SRC/node_modules" ]; then
 	run_node "npm ci --no-audit --no-fund --loglevel=error"
@@ -66,4 +67,11 @@ STATUS_ARG=""
 if [ -f ./volumes/dependency-status/site/status.json ]; then
 	STATUS_ARG="--status /status/site/status.json"
 fi
-run_node "npm run --silent dashboard -- --out /out $STATUS_ARG"
+# The servers' cron job reports, which the login service stores (login/report.js).
+# Created by docker when the login service starts, so it's there on a set-up server.
+REPORTS_ARG=""
+if [ -d ./volumes/reports ]; then
+	REPORTS_ARG="--reports /reports"
+fi
+
+run_node "npm run --silent dashboard -- --out /out $STATUS_ARG $REPORTS_ARG"
