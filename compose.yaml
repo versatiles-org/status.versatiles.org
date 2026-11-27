@@ -117,7 +117,7 @@ services:
 
   certbot:
     container_name: certbot
-    image: certbot/certbot:v5.9.0
+    image: certbot/certbot:v5.10.0
     # Only run by the scripts in bin/cert, which check that nginx is up.
     profiles: [donotstart]
     security_opt:
